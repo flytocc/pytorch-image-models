@@ -21,6 +21,13 @@ def create_dataset(name, root, split='validation', search_split=True, is_trainin
     if name.startswith('tfds'):
         ds = IterableImageDataset(
             root, parser=name, split=split, is_training=is_training, batch_size=batch_size, **kwargs)
+    elif name.startswith('torchvision'):
+        import torchvision
+        is_training = True if split == 'train' else False
+        if 'cifar10' in name:
+            ds = torchvision.datasets.CIFAR10(root, train=is_training)
+        elif 'cifar100' in name:
+            ds = torchvision.datasets.CIFAR100(root, train=is_training)
     else:
         # FIXME support more advance split cfg for ImageFolder/Tar datasets in the future
         kwargs.pop('repeats', 0)  # FIXME currently only Iterable dataset support the repeat multiplier

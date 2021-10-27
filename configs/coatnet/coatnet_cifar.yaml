@@ -1,0 +1,2 @@
+warmup_epochs: 10
+dataset: 'torchvision-cifar10'
