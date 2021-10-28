@@ -2,7 +2,7 @@ dataset: 'torchvision-cifar10'
 num_classes: 10
 
 model: 'swin_tiny_patch4_window7_224'
-#input_size: 3 32 32
+input_size: 3 224 224
 
 
 weight_decay: 0.03
