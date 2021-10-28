@@ -193,8 +193,10 @@ class FeedForward(nn.Module):
 class Attention(nn.Module):
     def __init__(self, inp, oup, image_size, heads=8, dim_head=32, dropout=0.):
         super().__init__()
-        inner_dim = dim_head * heads
-        project_out = not (heads == 1 and dim_head == inp)
+        heads = oup // dim_head
+        # inner_dim = dim_head * heads
+        inner_dim = oup
+        assert inner_dim == oup, f"heads {heads}, dim_head {dim_head}, oup {oup}"
 
         self.ih, self.iw = image_size
 
@@ -220,9 +222,9 @@ class Attention(nn.Module):
         self.to_qkv = nn.Linear(inp, inner_dim * 3, bias=False)
 
         self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, oup),
+            nn.Linear(oup, oup),
             nn.Dropout(dropout)
-        ) if project_out else nn.Identity()
+        )
 
     def forward(self, x):
         qkv = self.to_qkv(x).chunk(3, dim=-1)
@@ -245,10 +247,11 @@ class Attention(nn.Module):
         return out
 
 
+
 class Transformer(nn.Module):
     def __init__(self, inp, oup, image_size, heads=8, dim_head=32, downsample=False, dropout=0.):
         super().__init__()
-        hidden_dim = int(inp * 4)
+        hidden_dim = int(oup * 4)
 
         self.ih, self.iw = image_size
         self.downsample = downsample
@@ -346,9 +349,8 @@ class CoAtNet(nn.Module):
             width = width // 2
             height = height // 2
             self.add_module(f'stage{i+1}', block(inplanes=dims[i], outplanes=dims[i+1], l=l, width=width, height=height))
-
-
         self.global_pool, self.fc = create_classifier(dims[-1], self.num_classes)
+
 
     def forward(self, x):
         x = self.stage0(x)

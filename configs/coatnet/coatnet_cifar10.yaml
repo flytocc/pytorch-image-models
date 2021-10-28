@@ -4,11 +4,12 @@ num_classes: 10
 model: 'coatnet_0'
 #input_size: 3 32 32
 
-weight_decay: 0.1
-clip_grad: 1.0
 
-sched: 'step'
-lr: 0.001
-epochs: 164
+weight_decay: 0.03
+#clip_grad: 1.0
+opt: 'adamw'
+
+sched: 'cosine'
+lr: 0.0005
+epochs: 200
 warmup_epochs: 0
-decay_epochs: 81 # 122
