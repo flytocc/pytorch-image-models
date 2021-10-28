@@ -612,7 +612,7 @@ def swin_tiny_patch4_window7_224(pretrained=False, **kwargs):
     """ Swin-T @ 224x224, trained ImageNet-1k
     """
     model_kwargs = dict(
-        patch_size=1, window_size=7, embed_dim=96, depths=(2, 2, 6, 2), num_heads=(3, 6, 12, 24), **kwargs)
+        patch_size=4, window_size=7, embed_dim=96, depths=(2, 2, 6, 2), num_heads=(3, 6, 12, 24), **kwargs)
     return _create_swin_transformer('swin_tiny_patch4_window7_224', pretrained=pretrained, **model_kwargs)
 
 
