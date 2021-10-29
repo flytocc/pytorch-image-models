@@ -27,7 +27,7 @@ def _cfg(url='', **kwargs):
     return {
         'url': url,
         'num_classes': 1000, 'input_size': (3, 224, 224), 'pool_size': (1, 1),
-        'crop_pct': 0.875, 'interpolation': 'bilinear',
+        'crop_pct': 0.9, 'interpolation': 'bicubic',
         'mean': IMAGENET_DEFAULT_MEAN, 'std': IMAGENET_DEFAULT_STD,
         'first_conv': 'features.0', 'classifier': 'head.fc',
         **kwargs
@@ -152,7 +152,8 @@ class Conv_Block(nn.Module):
                  inplanes: int,
                  outplanes: int,
                  width,
-                 height,):
+                 height,
+                 **kwargs):
         super(Conv_Block, self).__init__()
 
         blocks = []
@@ -249,7 +250,7 @@ class Attention(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, inp, oup, image_size, heads=8, dim_head=32, downsample=False, dropout=0.):
+    def __init__(self, inp, oup, image_size, drop_path=0., heads=8, dim_head=32, downsample=False, dropout=0.):
         super().__init__()
         hidden_dim = int(oup * 4)
 
@@ -263,6 +264,7 @@ class Transformer(nn.Module):
 
         self.attn = Attention(inp, oup, image_size, heads, dim_head, dropout)
         self.ff = FeedForward(oup, hidden_dim, dropout)
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
         self.attn = nn.Sequential(
             Rearrange('b c ih iw -> b (ih iw) c'),
@@ -278,10 +280,10 @@ class Transformer(nn.Module):
 
     def forward(self, x):
         if self.downsample:
-            x = self.proj(self.pool1(x)) + self.attn(self.pool2(x))
+            x = self.proj(self.pool1(x)) + self.drop_path(self.attn(self.pool2(x)))
         else:
-            x = x + self.attn(x)
-        x = x + self.ff(x)
+            x = x + self.drop_path(self.attn(x))
+        x = x + self.drop_path(self.ff(x))
         return x
 
 class Transformer_Block(nn.Module):
@@ -291,13 +293,14 @@ class Transformer_Block(nn.Module):
                  inplanes: int,
                  outplanes: int,
                  width,
-                 height):
+                 height,
+                 drop_path):
         super(Transformer_Block, self).__init__()
         layers = []
         for i in range(l):
             downsample = True if i == 0 else False
             in_dim = inplanes if i == 0 else outplanes
-            layers.append(Transformer(in_dim, outplanes, downsample=downsample, image_size=(width, height)))
+            layers.append(Transformer(in_dim, outplanes, downsample=downsample, image_size=(width, height), drop_path=drop_path))
         self.block = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -336,6 +339,7 @@ class CoAtNet(nn.Module):
                  in_chans: int = 3,
                  output_stride: int = 32,
                  drop_rate: float = 0.0,
+                 drop_path: float = 0.0,
                  ):
         super(CoAtNet, self).__init__()
         self.num_classes = num_classes
@@ -348,7 +352,7 @@ class CoAtNet(nn.Module):
             block = Conv_Block if s == 'C' else Transformer_Block
             width = width // 2
             height = height // 2
-            self.add_module(f'stage{i+1}', block(inplanes=dims[i], outplanes=dims[i+1], l=l, width=width, height=height))
+            self.add_module(f'stage{i+1}', block(inplanes=dims[i], outplanes=dims[i+1], l=l, width=width, height=height, drop_path=drop_path))
         self.global_pool, self.fc = create_classifier(dims[-1], self.num_classes)
 
 
@@ -397,8 +401,9 @@ def coatnet_0(pretrained: bool = False, **kwargs: Any):
     model_args = dict(**kwargs)
     L = [2, 2, 3, 5, 2]
     D = [64, 96, 192, 384, 768]
-    input_size = [3, 32, 32]
-    return _create_coatnet('coatnet_0', pretrained=pretrained, L=L, dims=D, input_size=input_size, **model_args)
+    input_size = [3, 224, 224]
+    drop_path = 0.2
+    return _create_coatnet('coatnet_0', pretrained=pretrained, L=L, dims=D, input_size=input_size, drop_path=drop_path, **model_args)
 
 # @register_model
 # def vgg11(pretrained: bool = False, **kwargs: Any) -> VGG:
