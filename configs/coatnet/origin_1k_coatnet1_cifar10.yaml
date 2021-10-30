@@ -21,3 +21,5 @@ min_lr: 0.000003
 epochs: 300
 warmup_epochs: 5 # Imagenet1K bs4096 * 10K steps
 cooldown_epochs: 0
+
+use_dwconv: False
