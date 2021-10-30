@@ -199,7 +199,7 @@ class FeedForward(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, inp, oup, image_size, heads=8, dim_head=32, dropout=0.):
+    def __init__(self, inp, oup, image_size, dim_head=32, dropout=0.):
         super().__init__()
         heads = oup // dim_head
         # inner_dim = dim_head * heads
@@ -257,7 +257,7 @@ class Attention(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, inp, oup, image_size, idx, drop_path=0., heads=8, dim_head=32, downsample=False, dropout=0.):
+    def __init__(self, inp, oup, image_size, idx, stride, drop_path=0., heads=8, dim_head=32, downsample=False, dropout=0.):
         super().__init__()
         hidden_dim = int(oup * 4)
 
@@ -265,12 +265,12 @@ class Transformer(nn.Module):
         self.downsample = downsample
 
         if self.downsample:
-            self.stride = 4 if idx != 3 else 2
+            self.stride = stride
             self.pool1 = nn.MaxPool2d(3, self.stride, 1)
             self.pool2 = nn.MaxPool2d(3, self.stride, 1)
             self.proj = nn.Conv2d(inp, oup, 1, 1, 0, bias=False)
 
-        self.attn = Attention(inp, oup, image_size, heads, dim_head, dropout)
+        self.attn = Attention(inp, oup, image_size, dim_head, dropout)
         self.ff = FeedForward(oup, hidden_dim, dropout)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
@@ -303,13 +303,14 @@ class Transformer_Block(nn.Module):
                  width,
                  height,
                  drop_path,
+                 stride,
                  idx):
         super(Transformer_Block, self).__init__()
         layers = []
         for i in range(l):
             downsample = True if i == 0 else False
             in_dim = inplanes if i == 0 else outplanes
-            layers.append(Transformer(in_dim, outplanes, downsample=downsample, image_size=(width, height), drop_path=drop_path, idx=idx))
+            layers.append(Transformer(in_dim, outplanes, downsample=downsample, image_size=(width, height), drop_path=drop_path, idx=idx, stride=stride))
         self.block = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -344,6 +345,7 @@ class CoAtNet(nn.Module):
                  L,
                  dims,
                  input_size,
+                 stride,
                  stages: str = 'CCTT',
                  in_chans: int = 3,
                  output_stride: int = 32,
@@ -353,16 +355,18 @@ class CoAtNet(nn.Module):
         super(CoAtNet, self).__init__()
         self.num_classes = num_classes
         self.input_size = input_size
+        self.stride = stride
         width, height = input_size[1:]
-        width = width // 2
-        height = height // 2
+        width = width // stride[0]
+        height = height // stride[0]
         self.stage0 = Stem(dims[0])
-        for i, (l, d, s) in enumerate(zip(L[1:], dims[1:], list(stages))):
+        for i, (l, d, s0, s) in enumerate(zip(L[1:], dims[1:], stride[1:], list(stages))):
             block = Conv_Block if s == 'C' else Transformer_Block
-            width = width // 2
-            height = height // 2
+            width = width // s0
+            height = height // s0
             self.add_module(f'stage{i+1}', block(
-                inplanes=dims[i], outplanes=dims[i+1], l=l, width=width, height=height, drop_path=drop_path, idx=i+1
+                inplanes=dims[i], outplanes=dims[i+1], l=l, width=width, height=height,
+                drop_path=drop_path, idx=i+1, stride=s0
             ))
         self.global_pool, self.fc = create_classifier(dims[-1], self.num_classes)
 
@@ -409,12 +413,14 @@ def _create_coatnet(variant: str, pretrained: bool, **kwargs: Any):
 
 @register_model
 def coatnet_0(pretrained: bool = False, **kwargs: Any):
-    model_args = dict(**kwargs)
-    L = [2, 2, 3, 5, 2]
-    D = [64, 96, 192, 384, 768]
-    input_size = [3, 224, 224]
-    drop_path = 0.2
-    return _create_coatnet('coatnet_0', pretrained=pretrained, L=L, dims=D, input_size=input_size, drop_path=drop_path, **model_args)
+    model_args = dict(
+        stride = [2, 2, 2, 4, 1],
+        L = [2, 2, 3, 5, 2],
+        dims = [64, 96, 192, 384, 768],
+        input_size = [3, 224, 224],
+        drop_path = 0.2,
+        **kwargs)
+    return _create_coatnet('coatnet_0', pretrained=pretrained, **model_args)
 
 # @register_model
 # def vgg11(pretrained: bool = False, **kwargs: Any) -> VGG:
