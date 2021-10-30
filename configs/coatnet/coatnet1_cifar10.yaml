@@ -1,0 +1,18 @@
+dataset: 'torchvision-cifar10'
+num_classes: 10
+#aa: 'rand-m15-n2'
+amp: True
+
+model: 'coatnet_0'
+#input_size: 3 32 32
+
+
+weight_decay: 0.03
+#clip_grad: 1.0
+opt: 'adamw'
+
+sched: 'cosine'
+lr: 0.0005
+epochs: 200
+warmup_epochs: 0
+cooldown_epochs: 0
