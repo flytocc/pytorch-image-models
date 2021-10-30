@@ -1,9 +1,13 @@
 dataset: 'torchvision-cifar10'
 num_classes: 10
+model: 'coatnet_0'
+
+# Data Augmentation
 aa: 'rand-m15-n2'
 amp: True
 hflip: 0.0
-model: 'coatnet_0'
+mixup: 0.8
+
 #input_size: 3 32 32
 
 
