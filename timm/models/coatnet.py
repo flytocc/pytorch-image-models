@@ -95,8 +95,8 @@ class MBConv(nn.Module):
         super(MBConv, self).__init__()
 
         self.stride = stride
-        if stride == 2:
-            self.pool = nn.MaxPool2d(3, 2, 1)
+        if stride > 1:
+            self.pool = nn.MaxPool2d(3, stride, 1)
             self.proj = nn.Conv2d(inplanes, outplanes, 1)
         padding = (dilation * kernel - dilation) // 2
         self.inplanes, self.outplanes = int(inplanes), int(outplanes)
@@ -122,7 +122,7 @@ class MBConv(nn.Module):
         self.act = nn.GELU()
 
     def forward(self, x):
-        if self.stride == 2:
+        if self.stride > 1:
             residual = self.proj(self.pool(x))
         else:
             residual = x
@@ -153,12 +153,19 @@ class Conv_Block(nn.Module):
                  outplanes: int,
                  width,
                  height,
+                 idx,
                  **kwargs):
         super(Conv_Block, self).__init__()
 
         blocks = []
         for i in range(l):
-            stride = 2 if i == 0 else 1
+            if i == 0:
+                if idx == 3:
+                    stirde = 4
+                else:
+                    stride = 2
+            else:
+                stride = 1
             in_dim = inplanes if i == 0 else outplanes
             blocks.append(MBConv(inplanes=in_dim, outplanes=outplanes, stride=stride))
         self.block = nn.Sequential(*blocks)
@@ -250,7 +257,7 @@ class Attention(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, inp, oup, image_size, drop_path=0., heads=8, dim_head=32, downsample=False, dropout=0.):
+    def __init__(self, inp, oup, image_size, idx, drop_path=0., heads=8, dim_head=32, downsample=False, dropout=0.):
         super().__init__()
         hidden_dim = int(oup * 4)
 
@@ -258,8 +265,9 @@ class Transformer(nn.Module):
         self.downsample = downsample
 
         if self.downsample:
-            self.pool1 = nn.MaxPool2d(3, 2, 1)
-            self.pool2 = nn.MaxPool2d(3, 2, 1)
+            self.stride = 4 if idx != 3 else 2
+            self.pool1 = nn.MaxPool2d(3, self.stride, 1)
+            self.pool2 = nn.MaxPool2d(3, self.stride, 1)
             self.proj = nn.Conv2d(inp, oup, 1, 1, 0, bias=False)
 
         self.attn = Attention(inp, oup, image_size, heads, dim_head, dropout)
@@ -294,13 +302,14 @@ class Transformer_Block(nn.Module):
                  outplanes: int,
                  width,
                  height,
-                 drop_path):
+                 drop_path,
+                 idx):
         super(Transformer_Block, self).__init__()
         layers = []
         for i in range(l):
             downsample = True if i == 0 else False
             in_dim = inplanes if i == 0 else outplanes
-            layers.append(Transformer(in_dim, outplanes, downsample=downsample, image_size=(width, height), drop_path=drop_path))
+            layers.append(Transformer(in_dim, outplanes, downsample=downsample, image_size=(width, height), drop_path=drop_path, idx=idx))
         self.block = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -352,7 +361,9 @@ class CoAtNet(nn.Module):
             block = Conv_Block if s == 'C' else Transformer_Block
             width = width // 2
             height = height // 2
-            self.add_module(f'stage{i+1}', block(inplanes=dims[i], outplanes=dims[i+1], l=l, width=width, height=height, drop_path=drop_path))
+            self.add_module(f'stage{i+1}', block(
+                inplanes=dims[i], outplanes=dims[i+1], l=l, width=width, height=height, drop_path=drop_path, idx=i+1
+            ))
         self.global_pool, self.fc = create_classifier(dims[-1], self.num_classes)
 
 
