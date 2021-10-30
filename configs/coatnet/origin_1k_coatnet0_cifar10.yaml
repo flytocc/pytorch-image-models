@@ -2,8 +2,7 @@ dataset: 'torchvision-cifar10'
 num_classes: 10
 aa: 'rand-m15-n2'
 amp: True
-mixup: 0.8
-
+hflip: 0.0
 model: 'coatnet_0'
 #input_size: 3 32 32
 
@@ -13,7 +12,8 @@ clip_grad: 1.0
 opt: 'adamw'
 
 sched: 'cosine'
-lr: 0.0005
+lr: 0.0002 # 论文 bs4096 + lr 1e-3
+min_lr: 0.000002
 epochs: 300
-warmup_epochs: 0
+warmup_epochs: 5 # Imagenet1K bs4096 * 10K steps
 cooldown_epochs: 0

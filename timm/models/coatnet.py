@@ -414,11 +414,22 @@ def _create_coatnet(variant: str, pretrained: bool, **kwargs: Any):
 @register_model
 def coatnet_0(pretrained: bool = False, **kwargs: Any):
     model_args = dict(
-        stride = [2, 2, 2, 4, 1],
+        stride = [2, 2, 2, 2, 2],
         L = [2, 2, 3, 5, 2],
         dims = [64, 96, 192, 384, 768],
         input_size = [3, 224, 224],
         drop_path = 0.2,
+        **kwargs)
+    return _create_coatnet('coatnet_0', pretrained=pretrained, **model_args)
+
+@register_model
+def coatnet_1(pretrained: bool = False, **kwargs: Any):
+    model_args = dict(
+        stride = [2, 2, 2, 2, 2],
+        L = [2, 2, 6, 14, 2],
+        dims = [64, 96, 192, 384, 768],
+        input_size = [3, 224, 224],
+        drop_path = 0.3,
         **kwargs)
     return _create_coatnet('coatnet_0', pretrained=pretrained, **model_args)
 
