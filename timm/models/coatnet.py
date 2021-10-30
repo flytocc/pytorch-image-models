@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from typing import Union, List, Dict, Any, cast, Tuple
 
 from .layers import DropBlock2d, DropPath, AvgPool2dSame, BlurPool2d, create_attn, get_attn, create_classifier
-from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, CIFAR_DEFAULT_MEAN, CIFAR_DEFAULT_STD
 from .helpers import build_model_with_cfg
 from .layers import ClassifierHead, ConvBnAct
 from .registry import register_model
@@ -28,7 +28,7 @@ def _cfg(url='', **kwargs):
         'url': url,
         'num_classes': 1000, 'input_size': (3, 224, 224), 'pool_size': (1, 1),
         'crop_pct': 0.9, 'interpolation': 'bicubic',
-        'mean': IMAGENET_DEFAULT_MEAN, 'std': IMAGENET_DEFAULT_STD,
+        'mean': CIFAR_DEFAULT_MEAN, 'std': CIFAR_DEFAULT_STD,
         'first_conv': 'features.0', 'classifier': 'head.fc',
         **kwargs
     }

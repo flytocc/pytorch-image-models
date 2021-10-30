@@ -13,3 +13,4 @@ sched: 'cosine'
 lr: 0.0005
 epochs: 200
 warmup_epochs: 0
+cooldown_epochs: 0

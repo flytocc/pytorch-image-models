@@ -9,6 +9,7 @@ weight_decay: 0.03
 #clip_grad: 1.0
 opt: 'adamw'
 
+drop_path: 0.2
 sched: 'cosine'
 lr: 0.0005
 epochs: 200
