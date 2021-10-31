@@ -39,6 +39,9 @@ def _cfg(url='', **kwargs):
 
 default_cfgs = {
     'coatnet_0': _cfg(url=''),
+    'coatnet_1': _cfg(url=''),
+    'coatnet_2': _cfg(url=''),
+    'coatnet_3': _cfg(url=''),
 }
 
 
