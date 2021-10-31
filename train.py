@@ -604,6 +604,8 @@ def main():
             f.write(args_text)
 
     try:
+        total_epoch = num_epochs - start_epoch
+        train_start_time = time.time()
         for epoch in range(start_epoch, num_epochs):
             if args.distributed and hasattr(loader_train.sampler, 'set_epoch'):
                 loader_train.sampler.set_epoch(epoch)
@@ -641,6 +643,10 @@ def main():
                 save_metric = eval_metrics[eval_metric]
                 best_metric, best_epoch = saver.save_checkpoint(epoch, metric=save_metric)
 
+            if args.local_rank == 0:
+                _logger.info('>> ETA: {}'.format(
+                    (time.time()-train_start_time)*total_epoch/(epoch-start_epoch+1)/60
+                ))
     except KeyboardInterrupt:
         pass
     if best_metric is not None:
@@ -660,6 +666,8 @@ def train_one_epoch(
 
     second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
     batch_time_m = AverageMeter()
+    # train_time_m = AverageMeter()
+    train_start_time = time.time()
     data_time_m = AverageMeter()
     losses_m = AverageMeter()
 
@@ -730,7 +738,8 @@ def train_one_epoch(
                         rate=input.size(0) * args.world_size / batch_time_m.val,
                         rate_avg=input.size(0) * args.world_size / batch_time_m.avg,
                         lr=lr,
-                        data_time=data_time_m))
+                        data_time=data_time_m,
+                    ))
 
                 if args.save_images and output_dir:
                     torchvision.utils.save_image(

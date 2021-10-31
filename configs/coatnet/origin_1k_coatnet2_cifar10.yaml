@@ -1,6 +1,6 @@
 dataset: 'torchvision-cifar10'
 num_classes: 10
-model: 'coatnet_1'
+model: 'coatnet_2'
 
 # Data Augmentation
 aa: 'rand-m15-n2'
@@ -16,9 +16,9 @@ clip_grad: 1.0
 opt: 'adamw'
 
 sched: 'cosine'
-lr: 0.000125 # 论文 bs4096 + lr 1e-3
-min_lr: 0.00000125
-warmup_lr: 0.00000125
+lr: 0.00006 # 论文 bs4096 + lr 1e-3
+min_lr: 0.0000006
+warmup_lr: 0.0000006
 epochs: 300
 warmup_epochs: 5 # Imagenet1K bs4096 * 10K steps
 cooldown_epochs: 0

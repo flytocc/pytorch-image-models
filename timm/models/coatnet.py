@@ -467,12 +467,22 @@ def coatnet_2(pretrained: bool = False, **kwargs: Any):
     model_args = dict(
         stride = [2, 2, 2, 2, 2],
         L = [2, 2, 6, 14, 2],
-        dims = [128, 128, 256, 612, 1024],
+        dims = [128, 128, 256, 512, 1024],
         input_size = [3, 224, 224],
         drop_path = 0.5,
         **kwargs)
     return _create_coatnet('coatnet_2', pretrained=pretrained, **model_args)
 
+@register_model
+def coatnet_3(pretrained: bool = False, **kwargs: Any):
+    model_args = dict(
+        stride = [2, 2, 2, 2, 2],
+        L = [2, 2, 6, 14, 2],
+        dims = [192, 192, 384, 768, 1536],
+        input_size = [3, 224, 224],
+        drop_path = 0.7,
+        **kwargs)
+    return _create_coatnet('coatnet_3', pretrained=pretrained, **model_args)
 
 # @register_model
 # def vgg11(pretrained: bool = False, **kwargs: Any) -> VGG:
