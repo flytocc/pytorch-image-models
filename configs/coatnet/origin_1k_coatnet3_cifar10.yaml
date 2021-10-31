@@ -16,9 +16,9 @@ clip_grad: 1.0
 opt: 'adamw'
 
 sched: 'cosine'
-lr: 0.00006 # 论文 bs4096 + lr 1e-3
-min_lr: 0.0000006
-warmup_lr: 0.0000006
+lr: 0.00025 # 论文 bs4096 + lr 1e-3
+min_lr: 0.0000025
+warmup_lr: 0.0000025
 epochs: 300
 warmup_epochs: 5 # Imagenet1K bs4096 * 10K steps
 cooldown_epochs: 0
