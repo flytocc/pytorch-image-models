@@ -23,12 +23,12 @@ __all__ = [
 ]
 
 
-def _cfg(url='', **kwargs):
+def _cfg(url='', mean=CIFAR_DEFAULT_MEAN, std=CIFAR_DEFAULT_STD, **kwargs):
     return {
         'url': url,
         'num_classes': 1000, 'input_size': (3, 224, 224), 'pool_size': (1, 1),
         'crop_pct': 0.9, 'interpolation': 'bicubic',
-        'mean': CIFAR_DEFAULT_MEAN, 'std': CIFAR_DEFAULT_STD,
+        'mean': mean, 'std': std,
         'first_conv': 'features.0', 'classifier': 'head.fc',
         **kwargs
     }
@@ -39,6 +39,7 @@ def _cfg(url='', **kwargs):
 
 default_cfgs = {
     'coatnet_0': _cfg(url=''),
+    'coatnet_0_1k': _cfg(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
     'coatnet_1': _cfg(url=''),
     'coatnet_2': _cfg(url=''),
     'coatnet_3': _cfg(url=''),
@@ -450,6 +451,19 @@ def coatnet_0(pretrained: bool = False, **kwargs: Any):
         drop_path = 0.2,
         **kwargs)
     return _create_coatnet('coatnet_0', pretrained=pretrained, **model_args)
+
+
+@register_model
+def coatnet_0_1k(pretrained: bool = False, **kwargs: Any):
+    model_args = dict(
+        stride = [2, 2, 2, 2, 2],
+        L = [2, 2, 3, 5, 2],
+        dims = [64, 96, 192, 384, 768],
+        input_size = [3, 224, 224],
+        drop_path = 0.2,
+        **kwargs)
+    return _create_coatnet('coatnet_0_1k', pretrained=pretrained, **model_args)
+
 
 @register_model
 def coatnet_1(pretrained: bool = False, **kwargs: Any):
