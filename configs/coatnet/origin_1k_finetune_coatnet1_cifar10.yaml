@@ -1,0 +1,26 @@
+dataset: 'torchvision-cifar10'
+num_classes: 10
+model: 'coatnet_1'
+
+# Data Augmentation
+aa: 'rand-m15-n2'
+amp: True
+hflip: 0.0
+mixup: 0.8
+crop_pct: 1.0
+#input_size: 3 32 32
+
+
+weight_decay: 0.00000001
+clip_grad: 1.0
+opt: 'adamw'
+
+sched: 'cosine'
+lr: 0.00005 # 论文 bs4096 + lr 1e-3
+min_lr: 0.00005
+#warmup_lr: 0.00000125
+epochs: 30
+warmup_epochs: 0 # Imagenet1K bs4096 * 10K steps
+cooldown_epochs: 0
+
+use_dwconv: True
