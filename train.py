@@ -318,7 +318,7 @@ def main():
     
     if args.log_wandb and args.local_rank == 0:
         if has_wandb:
-            wandb.init(project=args.experiment, config=args)
+            wandb.init(project=args.wandb_experiment, config=args)
         else:
             _logger.warning("You've requested to log metrics to wandb but package not found. "
                             "Metrics not being logged to wandb, try `pip install wandb`")
@@ -376,8 +376,8 @@ def main():
         checkpoint_path=args.initial_checkpoint,
         use_dwconv=args.use_dwconv
     )
-    if args.local_rank == 0 and has_wandb:
-        wandb.watch(model, log_freq=1000, log='all')
+    # if args.local_rank == 0 and has_wandb:
+    #     wandb.watch(model, log_freq=1000, log='all')
     if args.num_classes is None:
         assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'
         args.num_classes = model.num_classes  # FIXME handle model default vs config num_classes more elegantly
@@ -469,7 +469,7 @@ def main():
         else:
             if args.local_rank == 0:
                 _logger.info("Using native Torch DistributedDataParallel.")
-            model = NativeDDP(model, device_ids=[args.local_rank], broadcast_buffers=not args.no_ddp_bb)
+            model = NativeDDP(model, device_ids=[args.local_rank], broadcast_buffers=not args.no_ddp_bb, find_unused_parameters=True)
         # NOTE: EMA model does not need to be wrapped by DDP
 
     # setup learning rate schedule and starting epoch
@@ -725,13 +725,13 @@ def train_one_epoch(
                 losses_m.update(reduced_loss.item(), input.size(0))
 
             if args.local_rank == 0:
-                wandb.log(dict(
-                    loss=losses_m.val,
-                    batch_time=batch_time_m.val,
-                    img_per_sec=input.size(0) * args.world_size / batch_time_m.val,
-                    lr=lr,
-                    data_time=data_time_m.avg
-                ))
+                # wandb.log(dict(
+                #     loss=losses_m.val,
+                #     batch_time=batch_time_m.val,
+                #     img_per_sec=input.size(0) * args.world_size / batch_time_m.val,
+                #     lr=lr,
+                #     data_time=data_time_m.avg
+                # ))
                 _logger.info(
                     'Train: {} [{:>4d}/{} ({:>3.0f}%)]  '
                     'Loss: {loss.val:#.4g} ({loss.avg:#.3g})  '
