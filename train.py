@@ -316,10 +316,10 @@ def main():
     setup_default_logging()
     args, args_text = _parse_args()
     
-    if args.log_wandb:
+    if args.log_wandb and args.local_rank == 0:
         if has_wandb:
             wandb.init(project=args.experiment, config=args)
-        else: 
+        else:
             _logger.warning("You've requested to log metrics to wandb but package not found. "
                             "Metrics not being logged to wandb, try `pip install wandb`")
              
@@ -376,7 +376,8 @@ def main():
         checkpoint_path=args.initial_checkpoint,
         use_dwconv=args.use_dwconv
     )
-    wandb.watch(model, log_freq=1000, log='all')
+    if args.local_rank == 0 and has_wandb:
+        wandb.watch(model, log_freq=1000, log='all')
     if args.num_classes is None:
         assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'
         args.num_classes = model.num_classes  # FIXME handle model default vs config num_classes more elegantly
