@@ -2,6 +2,7 @@
 
 Hacked together by / Copyright 2020 Ross Wightman
 """
+import torch
 
 
 class AverageMeter:
@@ -30,3 +31,9 @@ def accuracy(output, target, topk=(1,)):
     pred = pred.t()
     correct = pred.eq(target.reshape(1, -1).expand_as(pred))
     return [correct[:min(k, maxk)].reshape(-1).float().sum(0) * 100. / batch_size for k in topk]
+
+def cls_map(output, target):
+    # batch_size = target.size(0)
+    # idx_axes = torch.arange(batch_size)
+    scores, preds = output.softmax(dim=-1).topk(1, 1, True, True)
+    return scores, preds

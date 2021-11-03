@@ -210,6 +210,10 @@ def validate(args):
     top5 = AverageMeter()
 
     model.eval()
+    scores_list = []
+    preds_list = []
+    target_list = []
+
     with torch.no_grad():
         # warmup, reduce variability of first batch time, especially for comparing torchscript vs non
         input = torch.randn((args.batch_size,) + tuple(data_config['input_size'])).cuda()
@@ -230,18 +234,15 @@ def validate(args):
 
             if valid_labels is not None:
                 output = output[:, valid_labels]
-            loss = criterion(output, target)
+
+            scores, preds = output.softmax(dim=-1).topk(1, 1, True, True)
+            scores_list.append(scores.view(-1))
+            preds_list.append(preds.view(-1))
+            target_list.append(target)
 
             if real_labels is not None:
                 real_labels.add_result(output)
 
-            # measure accuracy and record loss
-            acc1, acc5 = accuracy(output.detach(), target, topk=(1, 5))
-            losses.update(loss.item(), input.size(0))
-            top1.update(acc1.item(), input.size(0))
-            top5.update(acc5.item(), input.size(0))
-
-            # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
 
@@ -256,23 +257,17 @@ def validate(args):
                         rate_avg=input.size(0) / batch_time.avg,
                         loss=losses, top1=top1, top5=top5))
 
-    if real_labels is not None:
-        # real labels mode replaces topk values at the end
-        top1a, top5a = real_labels.get_accuracy(k=1), real_labels.get_accuracy(k=5)
-    else:
-        top1a, top5a = top1.avg, top5.avg
-    results = OrderedDict(
-        top1=round(top1a, 4), top1_err=round(100 - top1a, 4),
-        top5=round(top5a, 4), top5_err=round(100 - top5a, 4),
-        param_count=round(param_count / 1e6, 2),
-        img_size=data_config['input_size'][-1],
-        cropt_pct=crop_pct,
-        interpolation=data_config['interpolation'])
+    scores_ = torch.cat(scores_list).cpu().numpy()
+    preds_ = torch.cat(preds_list).cpu().numpy()
+    targets_ = torch.cat(target_list).cpu().numpy()
 
-    _logger.info(' * Acc@1 {:.3f} ({:.3f}) Acc@5 {:.3f} ({:.3f})'.format(
-       results['top1'], results['top1_err'], results['top5'], results['top5_err']))
+    import numpy as np
+    np.save('scores.npy', scores_)
+    np.save('preds.npy', preds_)
+    np.save('targets.npy', targets_)
 
-    return results
+
+    return
 
 
 def main():
