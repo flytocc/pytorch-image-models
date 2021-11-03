@@ -725,13 +725,13 @@ def train_one_epoch(
                 losses_m.update(reduced_loss.item(), input.size(0))
 
             if args.local_rank == 0:
-                # wandb.log(dict(
-                #     loss=losses_m.val,
-                #     batch_time=batch_time_m.val,
-                #     img_per_sec=input.size(0) * args.world_size / batch_time_m.val,
-                #     lr=lr,
-                #     data_time=data_time_m.avg
-                # ))
+                wandb.log(dict(
+                    loss=losses_m.val,
+                    batch_time=batch_time_m.val,
+                    img_per_sec=input.size(0) * args.world_size / batch_time_m.val,
+                    lr=lr,
+                    data_time=data_time_m.avg
+                ))
                 _logger.info(
                     'Train: {} [{:>4d}/{} ({:>3.0f}%)]  '
                     'Loss: {loss.val:#.4g} ({loss.avg:#.3g})  '
