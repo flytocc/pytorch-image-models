@@ -5,6 +5,7 @@ timm functionality.
 
 Copyright 2021 Ross Wightman
 """
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -53,6 +54,21 @@ cfgs: Dict[str, List[Union[str, int]]] = {
     'vgg19': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
 }
 
+
+def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
+    def norm_cdf(x):
+        return (1. + math.erf(x / math.sqrt(2.))) / 2.
+
+    with torch.no_grad():
+        l = norm_cdf((a - mean) / std)
+        u = norm_cdf((b - mean) / std)
+        tensor.uniform_(2 * l - 1, 2 * u - 1)
+        tensor.erfinv_()
+        tensor.mul_(std * math.sqrt(2.))
+        tensor.add_(mean)
+        tensor.clamp_(min=a, max=b)
+        return tensor
+
 class SeConv2d(nn.Module):
     def __init__(self,
                  inplanes: int,
@@ -67,14 +83,14 @@ class SeConv2d(nn.Module):
             nn.Conv2d(innerplanse, inplanes, 1),
             nn.Sigmoid()
         )
-    #     self._init_weights()
-    #
-    # def _init_weights(self) -> None:
-    #     for m in self.modules():
-    #         if isinstance(m, nn.Conv2d):
-    #             nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity="GELU")
-    #             if m.bias is not None:
-    #                 nn.init.zeros_(m.bias)
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity="relu")
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x):
         y = self.avg_pool(x)
@@ -91,9 +107,7 @@ class MBConv(nn.Module):
                  dilation: int = 1,
                  groups: Tuple[int, int] = (1, 1),
                  t: int = 4.0,
-                 norm: str = 'BN',
                  bn_eps: float = 1e-5,
-                 act: str = 'GELU6',
                  se_ratio: float = 0.25,
                  **kwargs) -> None:
         super(MBConv, self).__init__()
@@ -105,8 +119,13 @@ class MBConv(nn.Module):
         padding = (dilation * kernel - dilation) // 2
         self.inplanes, self.outplanes = int(inplanes), int(outplanes)
         innerplanes = int(inplanes * t)
+        # innerplanes = int(outplanes * t)
         self.t = t
-
+        self.pre_norm = nn.Sequential(
+            Rearrange("b c h w -> b h w c"),
+            nn.LayerNorm(inplanes),
+            Rearrange("b h w c -> b c h w"),
+        )
         self.conv1 = nn.Conv2d(self.inplanes, innerplanes, 1, stride=stride, padding=0, groups=groups[0], bias=False)
         self.bn1 = nn.BatchNorm2d(innerplanes, eps=bn_eps)
         self.conv2 = nn.Conv2d(innerplanes, innerplanes, kernel, stride=1, padding=padding,
@@ -126,11 +145,10 @@ class MBConv(nn.Module):
         self.act = nn.GELU()
 
     def forward(self, x):
-        if self.stride > 1:
-            residual = self.proj(self.pool(x))
-        else:
-            residual = x
 
+        residual = self.proj(self.pool(x)) if self.stride > 1 else x
+
+        x = self.pre_norm(x)
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.act(out)
@@ -152,72 +170,38 @@ class MBConv(nn.Module):
 class Conv_Block(nn.Module):
 
     def __init__(self,
-                 l: int, # repeat times
+                 l: int,
                  inplanes: int,
                  outplanes: int,
-                 width,
-                 height,
-                 idx,
+                 stride,
                  **kwargs):
         super(Conv_Block, self).__init__()
 
         blocks = []
         for i in range(l):
-            if i == 0:
-                if idx == 3:
-                    stirde = 4
-                else:
-                    stride = 2
-            else:
-                stride = 1
             in_dim = inplanes if i == 0 else outplanes
             blocks.append(MBConv(inplanes=in_dim, outplanes=outplanes, stride=stride))
+            stride = 1
         self.block = nn.Sequential(*blocks)
 
     def forward(self, x):
         return self.block(x)
 
 
-class PreNorm(nn.Module):
-    def __init__(self, dim, fn, norm):
-        super().__init__()
-        self.norm = norm(dim)
-        self.fn = fn
-
-    def forward(self, x, **kwargs):
-        return self.fn(self.norm(x), **kwargs)
-
-
-class DWConv(nn.Module):
-    def __init__(self, dim, H, W):
-        super(DWConv, self).__init__()
-        self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
-        self.H = H
-        self.W = W
-
-    def forward(self, x):
-        B, N, C = x.shape
-        x = x.transpose(1, 2).view(B, C, self.H, self.W)
-        x = self.dwconv(x)
-        x = x.flatten(2).transpose(1, 2)
-
-        return x
-
-
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout=0., H=None, W=None, use_dwconv=False):
+    def __init__(self, inplanes, outplanes, t=4.0, dropout=0., use_dwconv=False):
         super().__init__()
+        hidden_dim = int(outplanes * t)
         layers = [
-            nn.Linear(dim, hidden_dim),
+            nn.Conv2d(inplanes, hidden_dim, kernel_size=1),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, dim),
+            nn.Conv2d(hidden_dim, outplanes, kernel_size=1),
             nn.Dropout(dropout)
         ]
         if use_dwconv:
-            assert H is not None and W is not None
-            self.dwconv = DWConv(hidden_dim, H, W)
-            layers.insert(1, self.dwconv)
+            dwconv = nn.Conv2d(hidden_dim, hidden_dim, 3, 1, 1, bias=True, groups=hidden_dim)
+            layers.insert(1, dwconv)
         self.net = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -260,24 +244,26 @@ class Attention(nn.Module):
             nn.Dropout(dropout)
         )
 
+        trunc_normal_(self.relative_bias_table, std=.02)
+
     def forward(self, x):
+        B, C, H, W = x.shape
+        x = rearrange(x, 'b c h w -> b (h w) c')
         qkv = self.to_qkv(x).chunk(3, dim=-1)
-        q, k, v = map(lambda t: rearrange(
-            t, 'b n (h d) -> b h n d', h=self.heads), qkv)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qkv)
 
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
 
         # Use "gather" for more efficiency on GPUs
-        relative_bias = self.relative_bias_table.gather(
-            0, self.relative_index.repeat(1, self.heads))
-        relative_bias = rearrange(
-            relative_bias, '(h w) c -> 1 c h w', h=self.ih*self.iw, w=self.ih*self.iw)
+        relative_bias = self.relative_bias_table.gather(0, self.relative_index.repeat(1, self.heads))
+        relative_bias = rearrange(relative_bias, '(h w) c -> 1 c h w', h=self.ih*self.iw, w=self.ih*self.iw)
         dots = dots + relative_bias
 
         attn = self.attend(dots)
         out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
         out = self.to_out(out)
+        out = rearrange(out, 'b (h w) c -> b c h w', h=H, w=W)
         return out
 
 
@@ -292,32 +278,30 @@ class Transformer(nn.Module):
 
         if self.downsample:
             self.stride = stride
-            self.pool1 = nn.MaxPool2d(3, self.stride, 1)
-            self.pool2 = nn.MaxPool2d(3, self.stride, 1)
+            self.pool = nn.MaxPool2d(3, self.stride, 1)
             self.proj = nn.Conv2d(inp, oup, 1, 1, 0, bias=False)
 
         self.attn = Attention(inp, oup, image_size, dim_head, dropout)
-        self.ff = FeedForward(oup, hidden_dim, dropout, self.ih, self.iw, use_dwconv)
+        self.ff = FeedForward(oup, oup, dropout=dropout, use_dwconv=use_dwconv)
+        # self.ff = MBConv(oup, oup, se_ratio=0.0) # 0.25
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-
-        self.attn = nn.Sequential(
-            Rearrange('b c ih iw -> b (ih iw) c'),
-            PreNorm(inp, self.attn, nn.LayerNorm),
-            Rearrange('b (ih iw) c -> b c ih iw', ih=self.ih, iw=self.iw)
+        self.norm1 = nn.Sequential(
+            Rearrange("b c h w -> b h w c"),
+            nn.LayerNorm(inp),
+            Rearrange("b h w c -> b c h w"),
         )
-
-        self.ff = nn.Sequential(
-            Rearrange('b c ih iw -> b (ih iw) c'),
-            PreNorm(oup, self.ff, nn.LayerNorm),
-            Rearrange('b (ih iw) c -> b c ih iw', ih=self.ih, iw=self.iw)
+        self.norm2 = nn.Sequential(
+            Rearrange("b c h w -> b h w c"),
+            nn.LayerNorm(oup),
+            Rearrange("b h w c -> b c h w"),
         )
 
     def forward(self, x):
         if self.downsample:
-            x = self.proj(self.pool1(x)) + self.drop_path(self.attn(self.pool2(x)))
+            x = self.proj(self.pool(x)) + self.drop_path(self.attn(self.pool(self.norm1(x))))
         else:
             x = x + self.drop_path(self.attn(x))
-        x = x + self.drop_path(self.ff(x))
+        x = x + self.drop_path(self.ff(self.norm2(x)))
         return x
 
 class Transformer_Block(nn.Module):
@@ -353,7 +337,7 @@ class Stem(nn.Module):
         super(Stem, self).__init__()
         self.conv1 = nn.Conv2d(3, dim, 3, stride=2, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(dim)
-        self.conv2 = nn.Conv2d(dim, dim, 3, bias=False)
+        self.conv2 = nn.Conv2d(dim, dim, 3, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(dim)
         self.act = nn.GELU()
 
@@ -376,11 +360,9 @@ class CoAtNet(nn.Module):
                  input_size,
                  stride,
                  stages: str = 'CCTT',
-                 in_chans: int = 3,
-                 output_stride: int = 32,
-                 drop_rate: float = 0.0,
                  drop_path: float = 0.0,
                  use_dwconv: bool = False,
+                 **kwrags
                  ):
         super(CoAtNet, self).__init__()
         self.num_classes = num_classes
@@ -399,7 +381,7 @@ class CoAtNet(nn.Module):
                 drop_path=drop_path, idx=i+1, stride=s0, use_dwconv=use_dwconv
             ))
         self.global_pool, self.fc = create_classifier(dims[-1], self.num_classes)
-
+        self._init_weights()
 
     def forward(self, x):
         x = self.stage0(x)
@@ -410,6 +392,17 @@ class CoAtNet(nn.Module):
         x = self.global_pool(x)
         x = self.fc(x)
         return x
+
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.Linear):
+                trunc_normal_(m.weight, std=0.02)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
 
 
 def _filter_fn(state_dict):

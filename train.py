@@ -376,6 +376,7 @@ def main():
         checkpoint_path=args.initial_checkpoint,
         use_dwconv=args.use_dwconv
     )
+    # wandb.watch(model, log_freq=1000, log='all')
     if args.num_classes is None:
         assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'
         args.num_classes = model.num_classes  # FIXME handle model default vs config num_classes more elegantly
@@ -723,6 +724,13 @@ def train_one_epoch(
                 losses_m.update(reduced_loss.item(), input.size(0))
 
             if args.local_rank == 0:
+                wandb.log(dict(
+                    loss=losses_m.val,
+                    batch_time=batch_time_m.val,
+                    img_per_sec=input.size(0) * args.world_size / batch_time_m.val,
+                    lr=lr,
+                    data_time=data_time_m.avg
+                ))
                 _logger.info(
                     'Train: {} [{:>4d}/{} ({:>3.0f}%)]  '
                     'Loss: {loss.val:#.4g} ({loss.avg:#.3g})  '
