@@ -376,7 +376,7 @@ def main():
         checkpoint_path=args.initial_checkpoint,
         use_dwconv=args.use_dwconv
     )
-    # wandb.watch(model, log_freq=1000, log='all')
+    wandb.watch(model, log_freq=1000, log='all')
     if args.num_classes is None:
         assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'
         args.num_classes = model.num_classes  # FIXME handle model default vs config num_classes more elegantly
