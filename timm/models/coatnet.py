@@ -109,6 +109,7 @@ class MBConv(nn.Module):
                  t: int = 4.0,
                  bn_eps: float = 1e-5,
                  se_ratio: float = 0.25,
+                 drop_path: float = 0.0,
                  **kwargs) -> None:
         super(MBConv, self).__init__()
 
@@ -140,6 +141,7 @@ class MBConv(nn.Module):
         self.bn3 = nn.BatchNorm2d(self.outplanes, eps=bn_eps)
 
         self.act = nn.GELU()
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
     def forward(self, x):
 
@@ -159,7 +161,7 @@ class MBConv(nn.Module):
         out = self.conv3(out)
         out = self.bn3(out)
 
-        out = out + residual
+        out = self.drop_path(out) + residual
 
         return out
 
@@ -170,6 +172,7 @@ class Conv_Block(nn.Module):
                  l: int,
                  inplanes: int,
                  outplanes: int,
+                 drop_path,
                  stride,
                  **kwargs):
         super(Conv_Block, self).__init__()
@@ -177,7 +180,7 @@ class Conv_Block(nn.Module):
         blocks = []
         for i in range(l):
             in_dim = inplanes if i == 0 else outplanes
-            blocks.append(MBConv(inplanes=in_dim, outplanes=outplanes, stride=stride))
+            blocks.append(MBConv(inplanes=in_dim, outplanes=outplanes, stride=stride, drop_path=drop_path))
             stride = 1
         self.block = nn.Sequential(*blocks)
 
@@ -278,18 +281,25 @@ class Transformer(nn.Module):
             self.pool = nn.MaxPool2d(3, self.stride, 1)
             self.proj = nn.Conv2d(inp, oup, 1, 1, 0, bias=False)
 
+        FFN = 'MLP'
+        # FFN = 'MBConv'
+        self.FFN = FFN
+        if FFN == 'MLP':
+            self.ff = FeedForward(oup, oup, dropout=dropout, use_dwconv=use_dwconv)
+            self.norm2 = nn.Sequential(
+                Rearrange("b c h w -> b h w c"),
+                nn.LayerNorm(oup),
+                Rearrange("b h w c -> b c h w"),
+            )
+        else:
+            self.ff = MBConv(oup, oup, se_ratio=0.0)  # 0.25
+
         self.attn = Attention(inp, oup, image_size, dim_head, dropout)
-        self.ff = FeedForward(oup, oup, dropout=dropout, use_dwconv=use_dwconv)
-        # self.ff = MBConv(oup, oup, se_ratio=0.0) # 0.25
+
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm1 = nn.Sequential(
             Rearrange("b c h w -> b h w c"),
             nn.LayerNorm(inp),
-            Rearrange("b h w c -> b c h w"),
-        )
-        self.norm2 = nn.Sequential(
-            Rearrange("b c h w -> b h w c"),
-            nn.LayerNorm(oup),
             Rearrange("b h w c -> b c h w"),
         )
 
@@ -298,7 +308,11 @@ class Transformer(nn.Module):
             x = self.proj(self.pool(x)) + self.drop_path(self.attn(self.pool(self.norm1(x))))
         else:
             x = x + self.drop_path(self.attn(x))
-        x = x + self.drop_path(self.ff(self.norm2(x)))
+
+        if self.FFN == 'MLP':
+            x = x + self.drop_path(self.ff(self.norm2(x)))
+        else:
+            x = self.ff(x)
         return x
 
 class Transformer_Block(nn.Module):
