@@ -83,14 +83,14 @@ class SeConv2d(nn.Module):
             nn.Conv2d(innerplanse, inplanes, 1),
             nn.Sigmoid()
         )
-        self._init_weights()
-
-    def _init_weights(self) -> None:
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity="relu")
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
+    #     self._init_weights()
+    #
+    # def _init_weights(self) -> None:
+    #     for m in self.modules():
+    #         if isinstance(m, nn.Conv2d):
+    #             nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity="GELU")
+    #             if m.bias is not None:
+    #                 nn.init.zeros_(m.bias)
 
     def forward(self, x):
         y = self.avg_pool(x)
@@ -196,9 +196,9 @@ class FeedForward(nn.Module):
         layers = [
             nn.Conv2d(inplanes, hidden_dim, kernel_size=1),
             nn.GELU(),
-            nn.Dropout(dropout),
+            # nn.Dropout(dropout),
             nn.Conv2d(hidden_dim, outplanes, kernel_size=1),
-            nn.Dropout(dropout)
+            # nn.Dropout(dropout)
         ]
         if use_dwconv:
             dwconv = nn.Conv2d(hidden_dim, hidden_dim, 3, 1, 1, bias=True, groups=hidden_dim)
@@ -223,8 +223,7 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
 
         # parameter table of relative position bias
-        self.relative_bias_table = nn.Parameter(
-            torch.zeros((2 * self.ih - 1) * (2 * self.iw - 1), heads))
+        self.relative_bias_table = nn.Parameter(torch.zeros((2 * self.ih - 1) * (2 * self.iw - 1), heads))
 
         coords = torch.meshgrid((torch.arange(self.ih), torch.arange(self.iw)))
         coords = torch.flatten(torch.stack(coords), 1)
@@ -244,8 +243,11 @@ class Attention(nn.Module):
             nn.Linear(oup, oup),
             nn.Dropout(dropout)
         )
+        self._init_weights()
 
-        trunc_normal_(self.relative_bias_table, std=.02)
+    def _init_weights(self):
+        # weight initialization
+        trunc_normal_(self.relative_bias_table, std=0.02)
 
     def forward(self, x):
         B, C, H, W = x.shape
@@ -266,7 +268,6 @@ class Attention(nn.Module):
         out = self.to_out(out)
         out = rearrange(out, 'b (h w) c -> b c h w', h=H, w=W)
         return out
-
 
 
 class Transformer(nn.Module):
@@ -321,6 +322,7 @@ class Transformer(nn.Module):
         else:
             x = self.ff(x)
         return x
+
 
 class Transformer_Block(nn.Module):
 
