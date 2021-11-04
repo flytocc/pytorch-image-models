@@ -315,7 +315,7 @@ class Transformer(nn.Module):
         if self.downsample:
             x = self.proj(self.pool(x)) + self.drop_path(self.attn(self.pool(self.norm1(x))))
         else:
-            x = x + self.drop_path(self.attn(x))
+            x = x + self.drop_path(self.attn(self.norm1(x)))
 
         if self.FFN == 'MLP':
             x = x + self.drop_path(self.ff(self.norm2(x)))
