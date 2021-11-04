@@ -28,7 +28,7 @@ def _cfg(url='', mean=CIFAR_DEFAULT_MEAN, std=CIFAR_DEFAULT_STD, **kwargs):
     return {
         'url': url,
         'num_classes': 1000, 'input_size': (3, 224, 224), 'pool_size': (1, 1),
-        'crop_pct': 0.9, 'interpolation': 'bicubic',
+        'crop_pct': 0.875, 'interpolation': 'bicubic',
         'mean': mean, 'std': std,
         'first_conv': 'features.0', 'classifier': 'head.fc',
         **kwargs
