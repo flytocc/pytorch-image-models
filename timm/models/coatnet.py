@@ -110,6 +110,7 @@ class MBConv(nn.Module):
                  bn_eps: float = 1e-5,
                  se_ratio: float = 0.25,
                  drop_path: float = 0.0,
+                 norm=nn.BatchNorm2d,
                  **kwargs) -> None:
         super(MBConv, self).__init__()
 
@@ -122,13 +123,13 @@ class MBConv(nn.Module):
         innerplanes = int(inplanes * t)
         # innerplanes = int(outplanes * t)
         self.t = t
-        self.pre_norm = nn.BatchNorm2d(inplanes)
+        self.pre_norm = norm(inplanes)
 
         self.conv1 = nn.Conv2d(self.inplanes, innerplanes, 1, stride=stride, padding=0, groups=groups[0], bias=False)
-        self.bn1 = nn.BatchNorm2d(innerplanes, eps=bn_eps)
+        self.bn1 = norm(innerplanes, eps=bn_eps)
         self.conv2 = nn.Conv2d(innerplanes, innerplanes, kernel, stride=1, padding=padding,
                                dilation=dilation, groups=innerplanes, bias=False)
-        self.bn2 = nn.BatchNorm2d(innerplanes, eps=bn_eps)
+        self.bn2 = norm(innerplanes, eps=bn_eps)
 
         # se_base_chs = innerplanes if se_reduce_mid else self.inplanes
         # se_innerplanse = int(se_base_chs * se_ratio)
@@ -138,7 +139,7 @@ class MBConv(nn.Module):
         else:
             self.se = None
         self.conv3 = nn.Conv2d(innerplanes, self.outplanes, 1, stride=1, padding=0, groups=groups[1], bias=False)
-        self.bn3 = nn.BatchNorm2d(self.outplanes, eps=bn_eps)
+        self.bn3 = norm(self.outplanes, eps=bn_eps)
 
         self.act = nn.GELU()
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -292,7 +293,13 @@ class Transformer(nn.Module):
                 Rearrange("b h w c -> b c h w"),
             )
         else:
-            self.ff = MBConv(oup, oup, se_ratio=0.0)  # 0.25
+            def norm_func(dim, eps=1e-5):
+                return nn.Sequential(
+                                    Rearrange("b c h w -> b h w c"),
+                                    nn.LayerNorm(dim, eps=eps),
+                                    Rearrange("b h w c -> b c h w"),
+                                )
+            self.ff = MBConv(oup, oup, se_ratio=0.0, norm=norm_func)  # 0.25
 
         self.attn = Attention(inp, oup, image_size, dim_head, dropout)
 
