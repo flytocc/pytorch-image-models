@@ -2,7 +2,7 @@
 num_classes: 1000
 model: 'coatnet_0_1k'
 log_wandb: True
-wandb_experiment: 'CoAtNet-Cifar10'
+wandb_experiment: 'CoAtNet-ImageNet1k'
 
 # Data Augmentation
 aa: 'rand-m15-n2'
