@@ -121,11 +121,8 @@ class MBConv(nn.Module):
         innerplanes = int(inplanes * t)
         # innerplanes = int(outplanes * t)
         self.t = t
-        self.pre_norm = nn.Sequential(
-            Rearrange("b c h w -> b h w c"),
-            nn.LayerNorm(inplanes),
-            Rearrange("b h w c -> b c h w"),
-        )
+        self.pre_norm = nn.BatchNorm2d(inplanes)
+
         self.conv1 = nn.Conv2d(self.inplanes, innerplanes, 1, stride=stride, padding=0, groups=groups[0], bias=False)
         self.bn1 = nn.BatchNorm2d(innerplanes, eps=bn_eps)
         self.conv2 = nn.Conv2d(innerplanes, innerplanes, kernel, stride=1, padding=padding,
