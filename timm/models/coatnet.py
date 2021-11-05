@@ -142,7 +142,7 @@ class MBConv(nn.Module):
         self.bn3 = norm(self.outplanes, eps=bn_eps)
 
         self.act = nn.GELU()
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        # self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
     def forward(self, x):
 
@@ -162,7 +162,7 @@ class MBConv(nn.Module):
         out = self.conv3(out)
         out = self.bn3(out)
 
-        out = self.drop_path(out) + residual
+        out += residual
 
         return out
 
