@@ -646,8 +646,8 @@ def main():
                 best_metric, best_epoch = saver.save_checkpoint(epoch, metric=save_metric)
 
             if args.local_rank == 0:
-                _logger.info('>> ETA: {}'.format(
-                    (time.time()-train_start_time)*total_epoch/(epoch-start_epoch+1)/60
+                _logger.info('>> ETA: {:.2f}min'.format(
+                    (time.time()-train_start_time)*(total_epoch-epoch)/(epoch-start_epoch+1)/60
                 ))
     except KeyboardInterrupt:
         pass
