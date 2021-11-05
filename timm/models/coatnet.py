@@ -139,16 +139,16 @@ class MBConv(nn.Module):
         else:
             self.se = None
         self.conv3 = nn.Conv2d(innerplanes, self.outplanes, 1, stride=1, padding=0, groups=groups[1], bias=False)
-        self.bn3 = norm(self.outplanes, eps=bn_eps)
 
         self.act = nn.GELU()
-        # self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
     def forward(self, x):
 
         residual = self.proj(self.pool(x)) if self.stride > 1 else x
 
         x = self.pre_norm(x)
+        x = self.act(x)
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.act(out)
@@ -160,7 +160,6 @@ class MBConv(nn.Module):
             out = self.se(out)
 
         out = self.conv3(out)
-        out = self.bn3(out)
 
         out += residual
 
@@ -181,7 +180,7 @@ class Conv_Block(nn.Module):
         blocks = []
         for i in range(l):
             in_dim = inplanes if i == 0 else outplanes
-            blocks.append(MBConv(inplanes=in_dim, outplanes=outplanes, stride=stride, drop_path=drop_path))
+            blocks.append(MBConv(inplanes=in_dim, outplanes=outplanes, stride=stride, drop_path=drop_path[i]))
             stride = 1
         self.block = nn.Sequential(*blocks)
 
@@ -303,6 +302,7 @@ class Transformer(nn.Module):
             self.ff = MBConv(oup, oup, se_ratio=0.0, norm=norm_func)  # 0.25
 
         self.attn = Attention(inp, oup, image_size, dim_head, dropout)
+        self.act = nn.GELU()
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm1 = nn.Sequential(
@@ -313,12 +313,12 @@ class Transformer(nn.Module):
 
     def forward(self, x):
         if self.downsample:
-            x = self.proj(self.pool(x)) + self.drop_path(self.attn(self.pool(self.norm1(x))))
+            x = self.proj(self.pool(x)) + self.drop_path(self.attn(self.pool(self.act(self.norm1(x)))))
         else:
             x = x + self.drop_path(self.attn(self.norm1(x)))
 
         if self.FFN == 'MLP':
-            x = x + self.drop_path(self.ff(self.norm2(x)))
+            x = x + self.drop_path(self.ff(self.act(self.norm2(x))))
         else:
             x = self.ff(x)
         return x
@@ -342,13 +342,13 @@ class Transformer_Block(nn.Module):
             downsample = True if i == 0 else False
             in_dim = inplanes if i == 0 else outplanes
             layers.append(Transformer(
-                in_dim, outplanes, downsample=downsample, image_size=(width, height), drop_path=drop_path,
+                in_dim, outplanes, downsample=downsample, image_size=(width, height), drop_path=drop_path[i],
                 idx=idx, stride=stride, use_dwconv=use_dwconv))
         self.block = nn.Sequential(*layers)
 
     def forward(self, x):
         x = self.block(x)
-        return (x)
+        return x
 
 
 class Stem(nn.Module):
@@ -388,6 +388,10 @@ class CoAtNet(nn.Module):
         self.num_classes = num_classes
         self.input_size = input_size
         self.stride = stride
+
+        # stochastic depth
+        drop_path_rates = [x.item() for x in torch.linspace(0, drop_path, sum(L[1:]))]
+
         width, height = input_size[1:]
         width = width // stride[0]
         height = height // stride[0]
@@ -398,8 +402,9 @@ class CoAtNet(nn.Module):
             height = height // s0
             self.add_module(f'stage{i+1}', block(
                 inplanes=dims[i], outplanes=dims[i+1], l=l, width=width, height=height,
-                drop_path=drop_path, idx=i+1, stride=s0, use_dwconv=use_dwconv
+                drop_path=drop_path_rates[sum(L[1:i+1]):sum(L[1:i+2])], idx=i+1, stride=s0, use_dwconv=use_dwconv
             ))
+
         self.global_pool, self.fc = create_classifier(dims[-1], self.num_classes)
         self._init_weights()
 
