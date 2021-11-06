@@ -1,9 +1,11 @@
 dataset: 'torchvision-cifar10'
 num_classes: 10
 model: 'coatnet_2'
+log_wandb: True
+wandb_experiment: 'CoAtNet-Cifar10'
 
 # Data Augmentation
-aa: 'rand-m20-n2' # m15 in paper
+aa: 'rand-m15-n2' # m15 in paper
 amp: True
 hflip: 0.0
 mixup: 0.8
@@ -18,7 +20,7 @@ opt: 'adamw'
 sched: 'cosine'
 lr: 0.00025 # 论文 bs4096 + lr 1e-3
 min_lr: 0.0000025
-warmup_lr: 0.0000025
+warmup_lr: 0.00000025
 epochs: 300
 warmup_epochs: 5 # Imagenet1K bs4096 * 10K steps
 cooldown_epochs: 0
