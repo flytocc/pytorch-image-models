@@ -159,7 +159,7 @@ class MBConv(nn.Module):
         if self.se is not None:
             out = self.se(out)
 
-        out = self.conv3(out)
+        out = self.drop_path(self.conv3(out))
 
         out += residual
 
