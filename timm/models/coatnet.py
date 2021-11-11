@@ -282,8 +282,8 @@ class Transformer(nn.Module):
             self.pool = nn.MaxPool2d(3, self.stride, 1)
             self.proj = nn.Conv2d(inp, oup, 1, 1, 0, bias=False)
 
-        FFN = 'MLP'
-        # FFN = 'MBConv'
+        # FFN = 'MLP'
+        FFN = 'MBConv'
         self.FFN = FFN
         if FFN == 'MLP':
             self.ff = FeedForward(oup, oup, dropout=dropout, use_dwconv=use_dwconv)
@@ -313,9 +313,9 @@ class Transformer(nn.Module):
 
     def forward(self, x):
         if self.downsample:
-            x = self.proj(self.pool(x)) + self.drop_path(self.attn(self.pool(self.act(self.norm1(x)))))
+            x = self.proj(self.pool(x)) + self.drop_path(self.attn(self.pool(self.norm1(x))))
         else:
-            x = x + self.drop_path(self.attn(self.act(self.norm1(x))))
+            x = x + self.drop_path(self.attn(self.norm1(x)))
 
         if self.FFN == 'MLP':
             x = x + self.drop_path(self.ff(self.act(self.norm2(x))))
@@ -421,7 +421,7 @@ class CoAtNet(nn.Module):
     def _init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                #nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
             elif isinstance(m, nn.Linear):
