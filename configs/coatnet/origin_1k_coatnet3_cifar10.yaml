@@ -3,7 +3,7 @@ num_classes: 10
 model: 'coatnet_3'
 
 # Data Augmentation
-aa: 'rand-m20-n2'
+aa: 'rand-m15-n2'
 amp: True
 hflip: 0.0
 mixup: 0.8
@@ -16,9 +16,9 @@ clip_grad: 1.0
 opt: 'adamw'
 
 sched: 'cosine'
-lr: 0.00025 # 论文 bs4096 + lr 1e-3
-min_lr: 0.0000025
-warmup_lr: 0.0000025
+lr: 0.0000625 # 论文 bs4096 + lr 1e-3
+min_lr: 0.000000625
+warmup_lr: 0.0000000625
 epochs: 300
 warmup_epochs: 5 # Imagenet1K bs4096 * 10K steps
 cooldown_epochs: 0
