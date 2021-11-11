@@ -1,6 +1,9 @@
 dataset: 'torchvision-cifar10'
 num_classes: 10
 model: 'coatnet_3'
+log_wandb: True
+wandb_experiment: 'CoAtNet-Cifar10'
+
 
 # Data Augmentation
 aa: 'rand-m15-n2'
