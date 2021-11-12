@@ -279,8 +279,8 @@ class Transformer(nn.Module):
 
         if self.downsample:
             self.stride = stride
-            self.pool = nn.MaxPool2d(3, self.stride, 1)
-            self.proj = nn.Conv2d(inp, oup, 1, 1, 0, bias=False)
+            # self.pool = nn.MaxPool2d(3, self.stride, 1)
+            # self.proj = nn.Conv2d(inp, oup, 1, 1, 0, bias=False)
         else:
             stride = 1
         # FFN = 'MLP'
