@@ -281,7 +281,8 @@ class Transformer(nn.Module):
             self.stride = stride
             self.pool = nn.MaxPool2d(3, self.stride, 1)
             self.proj = nn.Conv2d(inp, oup, 1, 1, 0, bias=False)
-
+        else:
+            stride = 1
         # FFN = 'MLP'
         FFN = 'MBConv'
         self.FFN = FFN
@@ -299,28 +300,30 @@ class Transformer(nn.Module):
                                     nn.LayerNorm(dim, eps=eps),
                                     Rearrange("b h w c -> b c h w"),
                                 )
-            self.ff = MBConv(oup, oup, se_ratio=0.0, norm=norm_func)  # 0.25
+            self.ff = MBConv(inp, oup, se_ratio=0.0, norm=norm_func, stride=stride)  # 0.25
 
-        self.attn = Attention(inp, oup, image_size, dim_head, dropout)
+        self.attn = Attention(oup, oup, image_size, dim_head, dropout)
         self.act = nn.GELU()
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm1 = nn.Sequential(
             Rearrange("b c h w -> b h w c"),
-            nn.LayerNorm(inp),
+            nn.LayerNorm(oup),
             Rearrange("b h w c -> b c h w"),
         )
 
     def forward(self, x):
-        if self.downsample:
-            x = self.proj(self.pool(x)) + self.drop_path(self.attn(self.pool(self.norm1(x))))
-        else:
-            x = x + self.drop_path(self.attn(self.norm1(x)))
-
-        if self.FFN == 'MLP':
-            x = x + self.drop_path(self.ff(self.act(self.norm2(x))))
-        else:
-            x = self.ff(x)
+        x = self.ff(x)
+        x = x + self.drop_path(self.attn(self.norm1(x)))
+        # if self.downsample:
+        #     x = self.proj(self.pool(x)) + self.drop_path(self.attn(self.pool(self.norm1(x))))
+        # else:
+        #     x = x + self.drop_path(self.attn(self.norm1(x)))
+        #
+        # if self.FFN == 'MLP':
+        #     x = x + self.drop_path(self.ff(self.act(self.norm2(x))))
+        # else:
+        #     x = self.ff(x)
         return x
 
 
