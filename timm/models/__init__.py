@@ -11,6 +11,7 @@ from .cspnet import *
 from .densenet import *
 from .dla import *
 from .dpn import *
+from .dsnet import *
 from .efficientnet import *
 from .ghostnet import *
 from .gluon_resnet import *
