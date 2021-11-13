@@ -27,7 +27,8 @@ import logging
 from functools import partial
 from collections import OrderedDict
 from copy import deepcopy
-
+import numpy as np
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -45,133 +46,14 @@ def _cfg(url='', **kwargs):
         'url': url,
         'num_classes': 1000, 'input_size': (3, 224, 224), 'pool_size': None,
         'crop_pct': .9, 'interpolation': 'bicubic', 'fixed_input_size': True,
-        'mean': IMAGENET_INCEPTION_MEAN, 'std': IMAGENET_INCEPTION_STD,
+        'mean': IMAGENET_DEFAULT_MEAN, 'std': IMAGENET_DEFAULT_STD,
         'first_conv': 'patch_embed.proj', 'classifier': 'head',
         **kwargs
     }
 
-
 default_cfgs = {
-    # patch models (weights from official Google JAX impl)
-    'vit_tiny_patch16_224': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'Ti_16-i21k-300ep-lr_0.001-aug_none-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_224.npz'),
-    'vit_tiny_patch16_384': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'Ti_16-i21k-300ep-lr_0.001-aug_none-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_384.npz',
-        input_size=(3, 384, 384), crop_pct=1.0),
-    'vit_small_patch32_224': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'S_32-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_224.npz'),
-    'vit_small_patch32_384': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'S_32-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_384.npz',
-        input_size=(3, 384, 384), crop_pct=1.0),
-    'vit_small_patch16_224': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'S_16-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_224.npz'),
-    'vit_small_patch16_384': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'S_16-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_384.npz',
-        input_size=(3, 384, 384), crop_pct=1.0),
-    'vit_base_patch32_224': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'B_32-i21k-300ep-lr_0.001-aug_medium1-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_224.npz'),
-    'vit_base_patch32_384': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'B_32-i21k-300ep-lr_0.001-aug_light1-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_384.npz',
-        input_size=(3, 384, 384), crop_pct=1.0),
-    'vit_base_patch16_224': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.01-res_224.npz'),
-    'vit_base_patch16_384': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.01-res_384.npz',
-        input_size=(3, 384, 384), crop_pct=1.0),
-    'vit_large_patch32_224': _cfg(
-        url='',  # no official model weights for this combo, only for in21k
-        ),
-    'vit_large_patch32_384': _cfg(
-        url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vitjx/jx_vit_large_p32_384-9b920ba8.pth',
-        input_size=(3, 384, 384), crop_pct=1.0),
-    'vit_large_patch16_224': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'L_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.1-sd_0.1--imagenet2012-steps_20k-lr_0.01-res_224.npz'),
-    'vit_large_patch16_384': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/'
-            'L_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.1-sd_0.1--imagenet2012-steps_20k-lr_0.01-res_384.npz',
-        input_size=(3, 384, 384), crop_pct=1.0),
-
-    # patch models, imagenet21k (weights from official Google JAX impl)
-    'vit_tiny_patch16_224_in21k': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/Ti_16-i21k-300ep-lr_0.001-aug_none-wd_0.03-do_0.0-sd_0.0.npz',
-        num_classes=21843),
-    'vit_small_patch32_224_in21k': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/S_32-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0.npz',
-        num_classes=21843),
-    'vit_small_patch16_224_in21k': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/S_16-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0.npz',
-        num_classes=21843),
-    'vit_base_patch32_224_in21k': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/B_32-i21k-300ep-lr_0.001-aug_medium1-wd_0.03-do_0.0-sd_0.0.npz',
-        num_classes=21843),
-    'vit_base_patch16_224_in21k': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0.npz',
-        num_classes=21843),
-    'vit_large_patch32_224_in21k': _cfg(
-        url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vitjx/jx_vit_large_patch32_224_in21k-9046d2e7.pth',
-        num_classes=21843),
-    'vit_large_patch16_224_in21k': _cfg(
-        url='https://storage.googleapis.com/vit_models/augreg/L_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.1-sd_0.1.npz',
-        num_classes=21843),
-    'vit_huge_patch14_224_in21k': _cfg(
-        url='https://storage.googleapis.com/vit_models/imagenet21k/ViT-H_14.npz',
-        hf_hub='timm/vit_huge_patch14_224_in21k',
-        num_classes=21843),
-
-    # SAM trained models (https://arxiv.org/abs/2106.01548)
-    'vit_base_patch32_sam_224': _cfg(
-        url='https://storage.googleapis.com/vit_models/sam/ViT-B_32.npz'),
-    'vit_base_patch16_sam_224': _cfg(
-        url='https://storage.googleapis.com/vit_models/sam/ViT-B_16.npz'),
-
-    # deit models (FB weights)
-    'deit_tiny_patch16_224': _cfg(
-        url='https://dl.fbaipublicfiles.com/deit/deit_tiny_patch16_224-a1311bcf.pth',
-        mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
-    'deit_small_patch16_224': _cfg(
-        url='https://dl.fbaipublicfiles.com/deit/deit_small_patch16_224-cd65a155.pth',
-        mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
-    'deit_base_patch16_224': _cfg(
-        url='https://dl.fbaipublicfiles.com/deit/deit_base_patch16_224-b5f2ef4d.pth',
-        mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
-    'deit_base_patch16_384': _cfg(
-        url='https://dl.fbaipublicfiles.com/deit/deit_base_patch16_384-8de9b5d1.pth',
-        mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD, input_size=(3, 384, 384), crop_pct=1.0),
-    'deit_tiny_distilled_patch16_224': _cfg(
-        url='https://dl.fbaipublicfiles.com/deit/deit_tiny_distilled_patch16_224-b40b3cf7.pth',
-        mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD, classifier=('head', 'head_dist')),
-    'deit_small_distilled_patch16_224': _cfg(
-        url='https://dl.fbaipublicfiles.com/deit/deit_small_distilled_patch16_224-649709d9.pth',
-        mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD, classifier=('head', 'head_dist')),
-    'deit_base_distilled_patch16_224': _cfg(
-        url='https://dl.fbaipublicfiles.com/deit/deit_base_distilled_patch16_224-df68dfff.pth',
-        mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD, classifier=('head', 'head_dist')),
-    'deit_base_distilled_patch16_384': _cfg(
-        url='https://dl.fbaipublicfiles.com/deit/deit_base_distilled_patch16_384-d0272ac0.pth',
-        mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD, input_size=(3, 384, 384), crop_pct=1.0,
-        classifier=('head', 'head_dist')),
-
-    # ViT ImageNet-21K-P pretraining by MILL
-    'vit_base_patch16_224_miil_in21k': _cfg(
-        url='https://miil-public-eu.oss-eu-central-1.aliyuncs.com/model-zoo/ImageNet_21K_P/models/timm/vit_base_patch16_224_in21k_miil.pth',
-        mean=(0, 0, 0), std=(1, 1, 1), crop_pct=0.875, interpolation='bilinear', num_classes=11221,
-    ),
-    'vit_base_patch16_224_miil': _cfg(
-        url='https://miil-public-eu.oss-eu-central-1.aliyuncs.com/model-zoo/ImageNet_21K_P/models/timm'
-            '/vit_base_patch16_224_1k_miil_84_4.pth',
-        mean=(0, 0, 0), std=(1, 1, 1), crop_pct=0.875, interpolation='bilinear',
-    ),
+    'vit_base_patch16_224': _cfg(''),
+    'vit_large_patch16_224': _cfg(''),
 }
 
 
@@ -221,6 +103,30 @@ class Block(nn.Module):
         return x
 
 
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_hid, n_position=200):
+        super(PositionalEncoding, self).__init__()
+
+        # Not a parameter
+        self.register_buffer('pos_table', self._get_sinusoid_encoding_table(n_position, d_hid))
+
+    def _get_sinusoid_encoding_table(self, n_position, d_hid):
+        ''' Sinusoid position encoding table '''
+        # TODO: make it with torch instead of numpy
+
+        def get_position_angle_vec(position):
+            return [position / np.power(10000, 2 * (hid_j // 2) / d_hid) for hid_j in range(d_hid)]
+
+        sinusoid_table = np.array([get_position_angle_vec(pos_i) for pos_i in range(n_position)])
+        sinusoid_table[:, 0::2] = np.sin(sinusoid_table[:, 0::2])  # dim 2i
+        sinusoid_table[:, 1::2] = np.cos(sinusoid_table[:, 1::2])  # dim 2i+1
+
+        return torch.FloatTensor(sinusoid_table).unsqueeze(0)
+
+    def forward(self, x):
+        return x + self.pos_table[:, :x.size(1)].clone().detach()
+
 class VisionTransformer(nn.Module):
     """ Vision Transformer
 
@@ -234,7 +140,7 @@ class VisionTransformer(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=True, representation_size=None, distilled=False,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., embed_layer=PatchEmbed, norm_layer=None,
-                 act_layer=None, weight_init=''):
+                 act_layer=None, weight_init='', decoder_dim=512, decoder_depth=8, mask_ratio=0.75):
         """
         Args:
             img_size (int, tuple): input image size
@@ -259,25 +165,40 @@ class VisionTransformer(nn.Module):
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
         self.num_tokens = 2 if distilled else 1
+
+        self.mask_ratio = mask_ratio
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         act_layer = act_layer or nn.GELU
 
-        self.patch_embed = embed_layer(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
-        num_patches = self.patch_embed.num_patches
+        self.patch_size = patch_size
+        self.patch_embed = embed_layer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
+        self.num_patches = self.patch_embed.num_patches
 
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))
+        # self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_dim))
+        # self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))
+        self.pos_embed = PositionalEncoding(embed_dim, img_size[0] * img_size[1] // pow(patch_size, 2))
+        self.decoder_pos_embed = PositionalEncoding(decoder_dim, img_size[0] * img_size[1] // pow(patch_size, 2))
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         self.blocks = nn.Sequential(*[
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, act_layer=act_layer)
+                attn_drop=attn_drop_rate, drop_path=0.0, norm_layer=norm_layer, act_layer=act_layer)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
 
+        self.decoder = nn.Sequential(*[
+            Block(
+                dim=decoder_dim, num_heads=decoder_dim//(embed_dim//num_heads), mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, drop=drop_rate,
+                attn_drop=attn_drop_rate, drop_path=0.0, norm_layer=norm_layer, act_layer=act_layer)
+            for i in range(decoder_depth)
+        ])
+        self.decoder_norm = norm_layer(decoder_dim)
+        self.decoder_proj = nn.Linear(decoder_dim, pow(patch_size, 2) * in_chans)
+
+        self.dim_proj = nn.Linear(embed_dim, decoder_dim)
         # Representation layer
         if representation_size and not distilled:
             self.num_features = representation_size
@@ -299,14 +220,12 @@ class VisionTransformer(nn.Module):
     def init_weights(self, mode=''):
         assert mode in ('jax', 'jax_nlhb', 'nlhb', '')
         head_bias = -math.log(self.num_classes) if 'nlhb' in mode else 0.
-        trunc_normal_(self.pos_embed, std=.02)
-        if self.dist_token is not None:
-            trunc_normal_(self.dist_token, std=.02)
         if mode.startswith('jax'):
             # leave cls token as zeros to match jax impl
             named_apply(partial(_init_vit_weights, head_bias=head_bias, jax_impl=True), self)
         else:
-            trunc_normal_(self.cls_token, std=.02)
+            # trunc_normal_(self.cls_token, std=.02)
+            trunc_normal_(self.mask_token, std=.02)
             self.apply(_init_vit_weights)
 
     def _init_weights(self, m):
@@ -334,31 +253,50 @@ class VisionTransformer(nn.Module):
             self.head_dist = nn.Linear(self.embed_dim, self.num_classes) if num_classes > 0 else nn.Identity()
 
     def forward_features(self, x):
-        x = self.patch_embed(x)
-        cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
-        if self.dist_token is None:
-            x = torch.cat((cls_token, x), dim=1)
-        else:
-            x = torch.cat((cls_token, self.dist_token.expand(x.shape[0], -1, -1), x), dim=1)
-        x = self.pos_drop(x + self.pos_embed)
+        # cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
+        # if self.dist_token is None:
+        #     x = torch.cat((cls_token, x), dim=1)
+        # else:
+        #     x = torch.cat((cls_token, self.dist_token.expand(x.shape[0], -1, -1), x), dim=1)
+        x = self.pos_drop(x + self.pos_embed(x))
         x = self.blocks(x)
         x = self.norm(x)
-        return self.pre_logits(x[:, 0])
-
-
-    def forward(self, x):
-        x = self.forward_features(x)
-        if self.head_dist is not None:
-            x, x_dist = self.head(x[0]), self.head_dist(x[1])  # x must be a tuple
-            if self.training and not torch.jit.is_scripting():
-                # during inference, return the average of both classifier predictions
-                return x, x_dist
-            else:
-                return (x + x_dist) / 2
-        else:
-            x = self.head(x)
         return x
 
+    def decode_(self, x):
+        x = self.pos_drop(x + self.decoder_pos_embed(x))
+        x = self.decoder(x)
+        x = self.decoder_norm(x)
+        return x
+
+    def forward(self, x):
+        B, C, W, H = x.shape
+        N = self.num_patches
+        idx = list(range(N))
+        random.shuffle(idx)
+
+        # Encoder
+        x0 = x
+        x0 = self.patch_embed(x0)
+        x0 = self.forward_features(x0[:, idx[:int(N*(1-self.mask_ratio))], :])
+        # projection + unshuffle
+        x0 = self.dim_proj(x0)
+        x1 = self.mask_token.repeat([B, N , 1])
+        x1[:, idx[:int(N*(1-self.mask_ratio))], :] = x0
+        # Decoder
+        x1 = self.decode_(x1)
+        # recover image
+        x1 = self.decoder_proj(x1)
+        # x1 = x1.permute([0, 2, 1]).reshape([B, C, W, H])
+        x = x.view([B, C, H//self.patch_size, self.patch_size, W//self.patch_size, self.patch_size])
+        x = x.permute([0, 2, 4, 3, 5, 1]).reshape(B, N, -1)
+        loss = self.loss(x, x1, idx[:int(N*(1-self.mask_ratio))])
+        return loss
+
+    def loss(self, img, x, idx_list):
+        img = img[:, idx_list, :]
+        x = x[:, idx_list, :]
+        return torch.pow(img-x, 2).mean()
 
 def _init_vit_weights(module: nn.Module, name: str = '', head_bias: float = 0., jax_impl: bool = False):
     """ ViT weight initialization
@@ -546,6 +484,15 @@ def mae_vit_large_patch16_224(pretrained=False, **kwargs):
     """ ViT-Large model (ViT-L/32) from original paper (https://arxiv.org/abs/2010.11929).
     ImageNet-1k weights fine-tuned from in21k @ 224x224, source https://github.com/google-research/vision_transformer.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=1024, depth=24, num_heads=16, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=1024, depth=24, num_heads=16, decoder_dim=512, decoder_depth=8, **kwargs)
     model = _create_vision_transformer('vit_large_patch16_224', pretrained=pretrained, **model_kwargs)
+    return model
+
+@register_model
+def mae_vit_base_patch16_224(pretrained=False, **kwargs):
+    """ ViT-Base (ViT-B/16) from original paper (https://arxiv.org/abs/2010.11929).
+    ImageNet-1k weights fine-tuned from in21k @ 224x224, source https://github.com/google-research/vision_transformer.
+    """
+    model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, decoder_dim=256, decoder_depth=1, **kwargs)
+    model = _create_vision_transformer('vit_base_patch16_224', pretrained=pretrained, **model_kwargs)
     return model

@@ -621,28 +621,19 @@ def main():
                     _logger.info("Distributing BatchNorm running means and vars")
                 distribute_bn(model, args.world_size, args.dist_bn == 'reduce')
 
-            eval_metrics = validate(model, loader_eval, validate_loss_fn, args, amp_autocast=amp_autocast)
-
-            if model_ema is not None and not args.model_ema_force_cpu:
-                if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
-                    distribute_bn(model_ema, args.world_size, args.dist_bn == 'reduce')
-                ema_eval_metrics = validate(
-                    model_ema.module, loader_eval, validate_loss_fn, args, amp_autocast=amp_autocast, log_suffix=' (EMA)')
-                eval_metrics = ema_eval_metrics
 
             if lr_scheduler is not None:
                 # step LR for next epoch
-                lr_scheduler.step(epoch + 1, eval_metrics[eval_metric])
+                lr_scheduler.step(epoch + 1)
 
             if output_dir is not None:
                 update_summary(
-                    epoch, train_metrics, eval_metrics, os.path.join(output_dir, 'summary.csv'),
+                    epoch, train_metrics, None, os.path.join(output_dir, 'summary.csv'),
                     write_header=best_metric is None, log_wandb=args.log_wandb and has_wandb)
 
             if saver is not None:
                 # save proper checkpoint with eval metric
-                save_metric = eval_metrics[eval_metric]
-                best_metric, best_epoch = saver.save_checkpoint(epoch, metric=save_metric)
+                best_metric, best_epoch = saver.save_checkpoint(epoch, metric=epoch)
 
             if args.local_rank == 0:
                 _logger.info('>> ETA: {:.2f}min'.format(
@@ -688,8 +679,7 @@ def train_one_epoch(
             input = input.contiguous(memory_format=torch.channels_last)
 
         with amp_autocast():
-            output = model(input)
-            loss = loss_fn(output, target)
+            loss = model(input)
 
         if not args.distributed:
             losses_m.update(loss.item(), input.size(0))
@@ -724,13 +714,14 @@ def train_one_epoch(
                 losses_m.update(reduced_loss.item(), input.size(0))
 
             if args.local_rank == 0:
-                wandb.log(dict(
-                    loss=losses_m.val,
-                    batch_time=batch_time_m.val,
-                    img_per_sec=input.size(0) * args.world_size / batch_time_m.val,
-                    lr=lr,
-                    data_time=data_time_m.avg
-                ))
+                if args.log_wandb:
+                    wandb.log(dict(
+                        loss=losses_m.val,
+                        batch_time=batch_time_m.val,
+                        img_per_sec=input.size(0) * args.world_size / batch_time_m.val,
+                        lr=lr,
+                        data_time=data_time_m.avg
+                    ))
                 _logger.info(
                     'Train: {} [{:>4d}/{} ({:>3.0f}%)]  '
                     'Loss: {loss.val:#.4g} ({loss.avg:#.3g})  '
