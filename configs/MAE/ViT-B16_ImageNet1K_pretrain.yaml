@@ -7,10 +7,12 @@ pretrained: False
 
 color_jitter: 0.0
 hflip: 0.5
+
 weight_decay: 0.05
 opt: 'adamw'
 sched: 'cosine'
-lr: 0.0024 # base lr = 1.5e-4   lr = 4096 * base / 256
 epochs: 100
+lr: 0.0024 # base lr = 1.5e-4   lr = 4096 * base / 256
 warmup_epochs: 5
+warmup_lr: 0.0000024
 cooldown_epochs: 0
