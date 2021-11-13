@@ -177,8 +177,14 @@ class VisionTransformer(nn.Module):
         # self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_dim))
         # self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))
-        self.pos_embed = PositionalEncoding(embed_dim, img_size[0] * img_size[1] // pow(patch_size, 2))
-        self.decoder_pos_embed = PositionalEncoding(decoder_dim, img_size[0] * img_size[1] // pow(patch_size, 2))
+        # self.pos_embed = PositionalEncoding(embed_dim, img_size[0] * img_size[1] // pow(patch_size, 2))
+        self.pos_embed = self.build_2d_sincos_position_embedding(
+            img_size[0] // patch_size, img_size[1] // patch_size, embed_dim
+        )
+        # self.decoder_pos_embed = PositionalEncoding(decoder_dim, img_size[0] * img_size[1] // pow(patch_size, 2))
+        self.decoder_pos_embed = self.build_2d_sincos_position_embedding(
+            img_size[0] // patch_size, img_size[1] // patch_size, decoder_dim
+        )
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
@@ -200,22 +206,36 @@ class VisionTransformer(nn.Module):
 
         self.dim_proj = nn.Linear(embed_dim, decoder_dim)
         # Representation layer
-        if representation_size and not distilled:
-            self.num_features = representation_size
-            self.pre_logits = nn.Sequential(OrderedDict([
-                ('fc', nn.Linear(embed_dim, representation_size)),
-                ('act', nn.Tanh())
-            ]))
-        else:
-            self.pre_logits = nn.Identity()
-
-        # Classifier head(s)
-        self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
-        self.head_dist = None
-        if distilled:
-            self.head_dist = nn.Linear(self.embed_dim, self.num_classes) if num_classes > 0 else nn.Identity()
+        # if representation_size and not distilled:
+        #     self.num_features = representation_size
+        #     self.pre_logits = nn.Sequential(OrderedDict([
+        #         ('fc', nn.Linear(embed_dim, representation_size)),
+        #         ('act', nn.Tanh())
+        #     ]))
+        # else:
+        #     self.pre_logits = nn.Identity()
+        #
+        # # Classifier head(s)
+        # self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
+        # self.head_dist = None
+        # if distilled:
+        #     self.head_dist = nn.Linear(self.embed_dim, self.num_classes) if num_classes > 0 else nn.Identity()
 
         self.init_weights(weight_init)
+
+    def build_2d_sincos_position_embedding(self, h, w, dim, temperature=10000.):
+        grid_w = torch.arange(w, dtype=torch.float32)
+        grid_h = torch.arange(h, dtype=torch.float32)
+        grid_w, grid_h = torch.meshgrid(grid_w, grid_h)
+        pos_dim = dim // 4
+        omega = torch.arange(pos_dim, dtype=torch.float32) / pos_dim
+        omega = 1. / (temperature ** omega)
+        out_w = torch.einsum('m,d->md', [grid_w.flatten(), omega])
+        out_h = torch.einsum('m,d->md', [grid_h.flatten(), omega])
+        pos_emb = torch.cat([torch.sin(out_w), torch.cos(out_w), torch.sin(out_h), torch.cos(out_h)], dim=1)[None, :, :]
+        pos_embed = nn.Parameter(pos_emb)
+        pos_embed.requires_grad = False
+        return pos_embed
 
     def init_weights(self, mode=''):
         assert mode in ('jax', 'jax_nlhb', 'nlhb', '')
@@ -253,18 +273,12 @@ class VisionTransformer(nn.Module):
             self.head_dist = nn.Linear(self.embed_dim, self.num_classes) if num_classes > 0 else nn.Identity()
 
     def forward_features(self, x):
-        # cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
-        # if self.dist_token is None:
-        #     x = torch.cat((cls_token, x), dim=1)
-        # else:
-        #     x = torch.cat((cls_token, self.dist_token.expand(x.shape[0], -1, -1), x), dim=1)
-        x = self.pos_drop(x + self.pos_embed(x))
         x = self.blocks(x)
         x = self.norm(x)
         return x
 
     def decode_(self, x):
-        x = self.pos_drop(x + self.decoder_pos_embed(x))
+        x = self.pos_drop(x + self.decoder_pos_embed)
         x = self.decoder(x)
         x = self.decoder_norm(x)
         return x
@@ -278,6 +292,7 @@ class VisionTransformer(nn.Module):
         # Encoder
         x0 = x
         x0 = self.patch_embed(x0)
+        x0 = self.pos_drop(x0 + self.pos_embed)
         x0 = self.forward_features(x0[:, idx[:int(N*(1-self.mask_ratio))], :])
         # projection + unshuffle
         x0 = self.dim_proj(x0)
@@ -287,7 +302,6 @@ class VisionTransformer(nn.Module):
         x1 = self.decode_(x1)
         # recover image
         x1 = self.decoder_proj(x1)
-        # x1 = x1.permute([0, 2, 1]).reshape([B, C, W, H])
         x = x.view([B, C, H//self.patch_size, self.patch_size, W//self.patch_size, self.patch_size])
         x = x.permute([0, 2, 4, 3, 5, 1]).reshape(B, N, -1)
         loss = self.loss(x, x1, idx[:int(N*(1-self.mask_ratio))])
