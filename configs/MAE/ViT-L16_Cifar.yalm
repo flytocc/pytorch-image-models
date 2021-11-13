@@ -1,0 +1,6 @@
+dataset: 'torchvision-cifar10'
+num_classes: 10
+model: 'mae_vit_large_patch16_224'
+log_wandb: False
+wandb_experiment: 'CoAtNet-Cifar10'
+pretrained: False
