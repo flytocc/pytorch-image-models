@@ -24,7 +24,6 @@ Hacked together by / Copyright 2021 Ross Wightman
 """
 import math
 import logging
-from functools import partial
 from collections import OrderedDict
 from copy import deepcopy
 import numpy as np
@@ -32,6 +31,8 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from functools import partial, reduce
+from operator import mul
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
 from .helpers import build_model_with_cfg, named_apply, adapt_input_conv
@@ -46,7 +47,7 @@ def _cfg(url='', **kwargs):
         'url': url,
         'num_classes': 1000, 'input_size': (3, 224, 224), 'pool_size': None,
         'crop_pct': .9, 'interpolation': 'bicubic', 'fixed_input_size': True,
-        'mean': IMAGENET_DEFAULT_MEAN, 'std': IMAGENET_DEFAULT_STD,
+        'mean': (0, 0, 0), 'std': (1, 1, 1),
         'first_conv': 'patch_embed.proj', 'classifier': 'head',
         **kwargs
     }
@@ -173,6 +174,7 @@ class VisionTransformer(nn.Module):
         self.patch_size = patch_size
         self.patch_embed = embed_layer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         self.num_patches = self.patch_embed.num_patches
+        self.visible_num = int(self.num_patches * (1-self.mask_ratio))
 
         # self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_dim))
@@ -238,15 +240,23 @@ class VisionTransformer(nn.Module):
         return pos_embed
 
     def init_weights(self, mode=''):
-        assert mode in ('jax', 'jax_nlhb', 'nlhb', '')
-        head_bias = -math.log(self.num_classes) if 'nlhb' in mode else 0.
-        if mode.startswith('jax'):
-            # leave cls token as zeros to match jax impl
-            named_apply(partial(_init_vit_weights, head_bias=head_bias, jax_impl=True), self)
-        else:
-            # trunc_normal_(self.cls_token, std=.02)
-            trunc_normal_(self.mask_token, std=.02)
-            self.apply(_init_vit_weights)
+        # weight initialization
+        trunc_normal_(self.mask_token, std=.02)
+        for name, m in self.named_modules():
+            if isinstance(m, nn.Linear):
+                if 'qkv' in name:
+                    # treat the weights of Q, K, V separately
+                    val = math.sqrt(6. / float(m.weight.shape[0] // 3 + m.weight.shape[1]))
+                    nn.init.uniform_(m.weight, -val, val)
+                else:
+                    nn.init.xavier_uniform_(m.weight)
+                nn.init.zeros_(m.bias)
+
+        if isinstance(self.patch_embed, PatchEmbed):
+            # xavier_uniform initialization
+            val = math.sqrt(6. / float(3 * reduce(mul, self.patch_embed.patch_size, 1) + self.embed_dim))
+            nn.init.uniform_(self.patch_embed.proj.weight, -val, val)
+            nn.init.zeros_(self.patch_embed.proj.bias)
 
     def _init_weights(self, m):
         # this fn left here for compat with downstream users
@@ -284,33 +294,34 @@ class VisionTransformer(nn.Module):
         return x
 
     def forward(self, x):
-        B, C, W, H = x.shape
+        B, C, H, W = x.shape
         N = self.num_patches
-        idx = list(range(N))
-        random.shuffle(idx)
+        # idx = list(range(N))
+        # random.shuffle(idx)
+        idx = torch.randperm(N)
 
         # Encoder
         x0 = x
         x0 = self.patch_embed(x0)
         x0 = self.pos_drop(x0 + self.pos_embed)
-        x0 = self.forward_features(x0[:, idx[:int(N*(1-self.mask_ratio))], :])
+        x0 = self.forward_features(x0[:, idx[:self.visible_num], :])
         # projection + unshuffle
         x0 = self.dim_proj(x0)
-        x1 = self.mask_token.repeat([B, N , 1])
-        x1[:, idx[:int(N*(1-self.mask_ratio))], :] = x0
+        x1 = self.mask_token.repeat([B, N, 1])
+        x1[:, idx[:self.visible_num], :] = x0
         # Decoder
         x1 = self.decode_(x1)
         # recover image
-        x1 = self.decoder_proj(x1)
-        x = x.view([B, C, H//self.patch_size, self.patch_size, W//self.patch_size, self.patch_size])
-        x = x.permute([0, 2, 4, 3, 5, 1]).reshape(B, N, -1)
-        loss = self.loss(x, x1, idx[:int(N*(1-self.mask_ratio))])
+        x1 = self.decoder_proj(x1)[:, idx[self.visible_num:], :]
+        x = x.view([B, C, H//self.patch_size, self.patch_size, W//self.patch_size, self.patch_size]) # B 3 14 16 14 16
+        x = x.permute([0, 2, 4, 3, 5, 1]).reshape(B, N, -1)[:, idx[self.visible_num:], :] # B 196 -1
+        loss = self.loss(x, x1)
         return loss
 
-    def loss(self, img, x, idx_list):
-        img = img[:, idx_list, :]
-        x = x[:, idx_list, :]
-        return torch.pow(img-x, 2).mean()
+    def loss(self, img, x):
+        # img = img[:, idx_list, :]
+        # x = x[:, idx_list, :] # B, 147, 16*16*3
+        return F.mse_loss(img, x, reduction='mean')
 
 def _init_vit_weights(module: nn.Module, name: str = '', head_bias: float = 0., jax_impl: bool = False):
     """ ViT weight initialization
