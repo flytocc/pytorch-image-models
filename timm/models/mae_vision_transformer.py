@@ -315,6 +315,7 @@ class VisionTransformer(nn.Module):
         x1 = self.decoder_proj(x1)[:, idx[self.visible_num:], :]
         x = x.view([B, C, H//self.patch_size, self.patch_size, W//self.patch_size, self.patch_size]) # B 3 14 16 14 16
         x = x.permute([0, 2, 4, 3, 5, 1]).reshape(B, N, -1)[:, idx[self.visible_num:], :] # B 196 -1
+        x = (x - x.mean()) / x.std()
         loss = self.loss(x, x1)
         return loss
 
