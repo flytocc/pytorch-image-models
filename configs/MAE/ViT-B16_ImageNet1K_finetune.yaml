@@ -1,8 +1,8 @@
 #dataset: 'torchvision-cifar10'
 num_classes: 1000
 model: 'mae_ft_vit_base_patch16_224'
-log_wandb: False
-wandb_experiment: 'MAE'
+log_wandb: True
+wandb_experiment: 'MAE-FT'
 pretrained: True
 initial_checkpoint: 'output/train/mae_vit-b_wo-norm/last.pth.tar'
 
@@ -20,5 +20,5 @@ sched: 'cosine'
 epochs: 50
 lr: 0.004 # base lr = 1e-3   lr = 1024 * base_lr / 256
 warmup_epochs: 5
-warmup_lr: 0.0000024
+warmup_lr: 0.000004
 cooldown_epochs: 0
