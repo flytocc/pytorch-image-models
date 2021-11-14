@@ -319,7 +319,7 @@ class VisionTransformer(nn.Module):
         return loss
 
     def loss(self, img, x):
-        x = F.layer_norm(x, [x.shape[-1]])
+        img = F.layer_norm(img, [img.shape[-1]])
         return F.mse_loss(img, x, reduction='mean')
 
 def _init_vit_weights(module: nn.Module, name: str = '', head_bias: float = 0., jax_impl: bool = False):
