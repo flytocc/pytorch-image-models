@@ -315,13 +315,11 @@ class VisionTransformer(nn.Module):
         x1 = self.decoder_proj(x1)[:, idx[self.visible_num:], :]
         x = x.view([B, C, H//self.patch_size, self.patch_size, W//self.patch_size, self.patch_size]) # B 3 14 16 14 16
         x = x.permute([0, 2, 4, 3, 5, 1]).reshape(B, N, -1)[:, idx[self.visible_num:], :] # B 196 -1
-        x = (x - x.mean(-1)[:, :, None]) / (x.std(-1)[:, :, None])
         loss = self.loss(x, x1)
         return loss
 
     def loss(self, img, x):
-        # img = img[:, idx_list, :]
-        # x = x[:, idx_list, :] # B, 147, 16*16*3
+        x = F.layer_norm(x, [x.shape[-1]])
         return F.mse_loss(img, x, reduction='mean')
 
 def _init_vit_weights(module: nn.Module, name: str = '', head_bias: float = 0., jax_impl: bool = False):
