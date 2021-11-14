@@ -60,6 +60,9 @@ def load_checkpoint(model, checkpoint_path, use_ema=False, strict=True):
             raise NotImplementedError('Model cannot load numpy checkpoint')
         return
     state_dict = load_state_dict(checkpoint_path, use_ema)
+    # todo
+    strict = False
+    _ = state_dict.pop('pos_embed')
     model.load_state_dict(state_dict, strict=strict)
 
 

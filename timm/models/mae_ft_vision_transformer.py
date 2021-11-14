@@ -182,11 +182,13 @@ class VisionTransformer(nn.Module):
         pos_embed.requires_grad = False
         return pos_embed
 
+    def get_num_layers(self):
+        return len(self.blocks)
+
     def init_weights(self, mode=''):
         assert mode in ('jax', 'jax_nlhb', 'nlhb', '')
         head_bias = -math.log(self.num_classes) if 'nlhb' in mode else 0.
-        if self.dist_token is not None:
-            trunc_normal_(self.dist_token, std=.02)
+
         if mode.startswith('jax'):
             # leave cls token as zeros to match jax impl
             named_apply(partial(_init_vit_weights, head_bias=head_bias, jax_impl=True), self)

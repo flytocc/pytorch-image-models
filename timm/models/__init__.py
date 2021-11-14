@@ -48,6 +48,7 @@ from .vision_transformer import *
 from .vision_transformer_hybrid import *
 
 from .mae_vision_transformer import *
+from .mae_ft_vision_transformer import *
 
 from .vovnet import *
 from .xception import *

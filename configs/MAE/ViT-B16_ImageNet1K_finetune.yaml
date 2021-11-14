@@ -6,7 +6,7 @@ wandb_experiment: 'MAE'
 pretrained: True
 initial_checkpoint: 'output/train/mae_vit-b_wo-norm/last.pth.tar'
 
-aa: 'rand-m9-n0.5'
+aa: 'rand-m9-mstd0.5'
 color_jitter: 0.0
 hflip: 0.5
 mix_up: 0.8
