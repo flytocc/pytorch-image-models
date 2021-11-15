@@ -319,7 +319,7 @@ class VisionTransformer(nn.Module):
         return loss
 
     def loss(self, img, x):
-        img = F.layer_norm(img, [img.shape[-1]])
+        # img = F.layer_norm(img, [img.shape[-1]])
         return F.mse_loss(img, x, reduction='mean')
 
 def _init_vit_weights(module: nn.Module, name: str = '', head_bias: float = 0., jax_impl: bool = False):
@@ -508,7 +508,7 @@ def mae_vit_large_patch16_224(pretrained=False, **kwargs):
     """ ViT-Large model (ViT-L/32) from original paper (https://arxiv.org/abs/2010.11929).
     ImageNet-1k weights fine-tuned from in21k @ 224x224, source https://github.com/google-research/vision_transformer.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=1024, depth=24, num_heads=16, decoder_dim=512, decoder_depth=8, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=1024, depth=24, num_heads=16, decoder_dim=512, decoder_depth=1, **kwargs)
     model = _create_vision_transformer('vit_large_patch16_224', pretrained=pretrained, **model_kwargs)
     return model
 
