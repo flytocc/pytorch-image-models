@@ -147,7 +147,7 @@ class VisionTransformer(nn.Module):
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
 
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        # self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = self.build_2d_sincos_position_embedding(
             img_size[0] // patch_size, img_size[1] // patch_size, embed_dim
         )
@@ -177,8 +177,9 @@ class VisionTransformer(nn.Module):
         out_h = torch.einsum('m,d->md', [grid_h.flatten(), omega])
         pos_emb = torch.cat([torch.sin(out_w), torch.cos(out_w), torch.sin(out_h), torch.cos(out_h)], dim=1)[None, :, :]
 
-        pe_token = torch.zeros([1, 1, self.embed_dim], dtype=torch.float32)
-        pos_embed = nn.Parameter(torch.cat([pe_token, pos_emb], dim=1))
+        # pe_token = torch.zeros([1, 1, self.embed_dim], dtype=torch.float32)
+        # pos_embed = nn.Parameter(torch.cat([pe_token, pos_emb], dim=1))
+        pos_embed = nn.Parameter(pos_emb)
         pos_embed.requires_grad = False
         return pos_embed
 
@@ -193,7 +194,7 @@ class VisionTransformer(nn.Module):
             # leave cls token as zeros to match jax impl
             named_apply(partial(_init_vit_weights, head_bias=head_bias, jax_impl=True), self)
         else:
-            trunc_normal_(self.cls_token, std=.02)
+            # trunc_normal_(self.cls_token, std=.02)
             self.apply(_init_vit_weights)
 
     def _init_weights(self, m):
@@ -222,11 +223,12 @@ class VisionTransformer(nn.Module):
 
     def forward_features(self, x):
         x = self.patch_embed(x)
-        cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
-        x = torch.cat((cls_token, x), dim=1)
+        # cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
+        # x = torch.cat((cls_token, x), dim=1)
         x = self.pos_drop(x + self.pos_embed)
         x = self.blocks(x)
         x = self.norm(x)
+        return x.mean(dim=1)
         return x[:, 0]
 
 
