@@ -227,8 +227,8 @@ class VisionTransformer(nn.Module):
         # x = torch.cat((cls_token, x), dim=1)
         x = self.pos_drop(x + self.pos_embed)
         x = self.blocks(x)
+        x = x.mean(dim=1, keepdim=True)
         x = self.norm(x)
-        return x.mean(dim=1)
         return x[:, 0]
 
 
