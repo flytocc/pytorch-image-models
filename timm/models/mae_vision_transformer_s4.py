@@ -145,7 +145,7 @@ class Downsample(nn.Module):
         # reshape
         x = x.permute([0, 2, 1])  # BxLxN
         x = x.reshape(B, L, self.visible_num, grid_h, grid_w)  # BxLx12 x grid_h x grid_w
-        x = x.view(B, -1, grid_h, grid_w)  # Bx(Lx12) x grid_h x grid_w
+        x = x.reshape(B, -1, grid_h, grid_w)  # Bx(Lx12) x grid_h x grid_w
 
         x = self.pool(x)
 
