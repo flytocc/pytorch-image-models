@@ -134,21 +134,24 @@ class Downsample(nn.Module):
         self.dim_in = dim_in
         self.dim_out = dim_out
         self.visible_num = visible_num
+        self.pool = nn.AvgPool2d(kernel_size=2, stride=2)
         self.reduction = nn.Linear(dim_in, dim_out, bias=False)
         self.norm = norm_layer(dim_out)
 
     def forward(self, x):
         B, N, L = x.shape
-        group = N // self.visible_num
-        grid_h = grid_w = int(group ** 0.5)
-        grid = torch.arange(group)
-        grid = grid.view(grid_h // 2, 2, grid_w // 2, 2)
-        grid = grid.permute([0, 2, 1, 3]).reshape(-1, 4)  # (x, 4)
-        grid = grid.flatten()
+        grid_h = grid_w = int((N // self.visible_num) ** 0.5)
 
-        x = x.view(B, self.visible_num, group, L)
-        x = x[:, :, grid].reshape(B, self.visible_num, -1, 4, L).mean(3)
-        x = x.view(B, -1, L)  # B, N // 4, L
+        # reshape
+        x = x.permute([0, 2, 1])  # BxLxN
+        x = x.reshape(B, L, self.visible_num, grid_h, grid_w)  # BxLx12 x grid_h x grid_w
+        x = x.view(B, -1, grid_h, grid_w)  # Bx(Lx12) x grid_h x grid_w
+
+        x = self.pool(x)
+
+        # reshape
+        x = x.view(B, L, -1)  # BxLx(N/4)
+        x = x.permute([0, 2, 1])  # Bx(N/4)xL
 
         x = self.reduction(x)
         x = self.norm(x)
@@ -165,11 +168,11 @@ class VisionTransformer(nn.Module):
         - https://arxiv.org/abs/2012.12877
     """
 
-    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000, embed_dim=96,
+    def __init__(self, img_size=224, patch_size=2, in_chans=3, num_classes=1000, embed_dim=96,
                  num_heads=12, mlp_ratio=4., qkv_bias=True, representation_size=None, distilled=False,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., embed_layer=PatchEmbed, norm_layer=None,
                  act_layer=None, weight_init='', decoder_dim=512, decoder_depth=8, mask_ratio=0.75,
-                 depths=(2, 3, 5, 2), dims=(96, 192, 384, 768)):
+                 strides=(2, 2, 2, 1), depths=(2, 3, 5, 2), dims=(96, 192, 384, 768)):
         """
         Args:
             img_size (int, tuple): input image size
@@ -194,22 +197,24 @@ class VisionTransformer(nn.Module):
         self.num_classes = num_classes
         self.num_features = dims[-1]
         self.embed_dim = embed_dim 
+        assert embed_dim == dims[0]
         self.num_tokens = 2 if distilled else 1
         self.mask_ratio = mask_ratio
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         act_layer = act_layer or nn.GELU
 
+        self.stride = stride = patch_size * reduce(mul, strides)
+        self.out_size = (img_size[0] // self.stride, img_size[1] // self.stride)
+
         self.img_size = img_size
         self.patch_size = patch_size
         self.patch_embed = embed_layer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
-        self.num_patches = (img_size[0] // 32) * (img_size[1] // 32)
+        self.num_patches = self.out_size[0] * self.out_size[1]
         self.visible_num = int(self.num_patches * (1 - self.mask_ratio))
 
-        out_size = (img_size[0] // 32, img_size[1] // 32)  # (7, 7)
-        grid_size = (img_size[0] // patch_size, img_size[1] // patch_size)  # 56
-        grid = torch.arange(grid_size[0] * grid_size[1])
-        grid = grid.view(out_size[0], grid_size[0] // out_size[0], out_size[1], grid_size[1] // out_size[1])
-        self.grid = grid.permute([0, 2, 1, 3]).reshape(out_size[0] * out_size[1], -1)  # (49, 64)
+        self.grid_size = grid_size = stride // patch_size  # 8
+        grid_h, grid_w = self.patch_embed.grid_size  # 112, 112
+        self.split_shape = (grid_h // grid_size, grid_size, grid_w // grid_size, grid_size)  # (14, 8, 14, 8)
 
         # self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_dim))
@@ -220,7 +225,7 @@ class VisionTransformer(nn.Module):
         )
         # self.decoder_pos_embed = PositionalEncoding(decoder_dim, img_size[0] * img_size[1] // pow(patch_size, 2))
         self.decoder_pos_embed = self.build_2d_sincos_position_embedding(
-            img_size[0] // 32, img_size[1] // 32, decoder_dim
+            img_size[0] // stride, img_size[1] // stride, decoder_dim
         )
         self.pos_drop = nn.Dropout(p=drop_rate)
 
@@ -250,7 +255,7 @@ class VisionTransformer(nn.Module):
             for i in range(decoder_depth)
         ])
         self.decoder_norm = norm_layer(decoder_dim)
-        self.decoder_proj = nn.Linear(decoder_dim, 32 ** 2 * in_chans)
+        self.decoder_proj = nn.Linear(decoder_dim, stride ** 2 * in_chans)
 
         # Representation layer
         # if representation_size and not distilled:
@@ -329,13 +334,13 @@ class VisionTransformer(nn.Module):
             self.head_dist = nn.Linear(self.embed_dim, self.num_classes) if num_classes > 0 else nn.Identity()
 
     def forward_features(self, x):
-        x = self.stage1(x)
-        x = self.stage2(x)
-        x = self.stage3(x)
-        x = self.stage4(x)
+        x1 = self.stage1(x)
+        x2 = self.stage2(x1)
+        x3 = self.stage3(x2)
+        x4 = self.stage4(x3)
         # x = self.blocks(x)
         # x = self.norm(x)
-        return x
+        return [x1, x2, x3, x4]
 
     def decode_(self, x):
         x = self.pos_drop(x + self.decoder_pos_embed)
@@ -345,7 +350,7 @@ class VisionTransformer(nn.Module):
 
     def forward(self, x):
         B, C, H, W = x.shape
-        N = self.num_patches
+        N = self.num_patches  # 14x14
         # idx = list(range(N))
         # random.shuffle(idx)
         idx = torch.randperm(N)
@@ -355,8 +360,16 @@ class VisionTransformer(nn.Module):
         x0 = x
         x0 = self.patch_embed(x0)
         x0 = self.pos_drop(x0 + self.pos_embed)
-        x0 = self.forward_features(x0[:, self.grid[visible_inds].flatten()])
+
+        # reshape
+        x0 = x0.view(B, *self.split_shape, -1).permute([0, 1, 3, 2, 4, 5])  # Bx14x14x8x8xL
+        x0 = x0.reshape(B, -1, self.grid_size ** 2, x0.size(-1))  # Bx(14x14)x(8x8)xL
+        x0 = x0[:, visible_inds]  # Bx(49)x(8x8)xL
+        x0 = x0.reshape(B, -1, x0.size(-1))  # Bx(49x8x8)xL
+
+        xs = self.forward_features(x0)
         # projection + unshuffle
+        x0 = xs[-1]
         x0 = self.dim_proj(x0)
         x1 = self.mask_token.repeat([B, N, 1])
         x1[:, visible_inds] = x0
@@ -364,7 +377,7 @@ class VisionTransformer(nn.Module):
         x1 = self.decode_(x1)
         # recover image
         x1 = self.decoder_proj(x1)
-        x = x.view([B, C, H // 32, 32, W // 32, 32]) # B 3 7 32 7 32
+        x = x.view([B, C, H // self.stride, self.stride, W // self.stride, self.stride])
         x = x.permute([0, 2, 4, 3, 5, 1]).reshape(B, N, -1) # B 49 -1
         loss = self.loss(
             x[:, masked_inds],
@@ -563,8 +576,8 @@ def mae_vit_base_patch16_224_s4(pretrained=False, **kwargs):
     ImageNet-1k weights fine-tuned from in21k @ 224x224, source https://github.com/google-research/vision_transformer.
     """
     model_kwargs = dict(
-        patch_size=4, embed_dim=96, num_heads=12,
-        decoder_dim=512, decoder_depth=2,
-        depths=(2, 3, 5, 2), dims=(96, 192, 384, 768), **kwargs)
+        patch_size=2, embed_dim=96, num_heads=12,
+        decoder_dim=256, decoder_depth=1,
+        strides=(2, 2, 2, 1), depths=(2, 3, 5, 2), dims=(96, 192, 384, 768), **kwargs)
     model = _create_vision_transformer('vit_base_patch16_224', pretrained=pretrained, **model_kwargs)
     return model

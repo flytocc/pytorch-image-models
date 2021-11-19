@@ -106,3 +106,8 @@ venv.bak/
 *.gz
 Untitled.ipynb
 Testing notebook.ipynb
+
+runs/
+wandb/
+.vscode/
+output/
